@@ -11,7 +11,7 @@ const ICONS = [Radio, ShieldAlert, Eye, Mic];
 export default function HomePage() {
   const { content } = useSite();
   const caps = [
-    { href: "/forecast", title: "4-week ensemble forecast", body: "Naive, seasonal naive, Holt, ridge and leakage-safe random forest — then an interval, not a single number." },
+    { href: "/forecast", title: "4-week ensemble forecast", body: "Naive, seasonal naive, Holt, ridge and leakage-safe random forest - then an interval, not a single number." },
     { href: "/surveillance", title: "IDSR-style early warning", body: "Z-score watches against an eight-week baseline. An alert starts an investigation; it never ends one." },
     { href: "/vision", title: "Vision on any file", body: "PDF, Word, Excel, CSV, photos, scans. Multi-model vision extracts Ghana fields and flags identifiers." },
     { href: "/intelligence", title: "Voice + web intelligence", body: "Speak a briefing. Search WHO, GHS and NADMO sources. OpenRouter falls back when one model is exhausted." },
@@ -91,11 +91,11 @@ export default function HomePage() {
         </Link>
         <Link href="/field" className="group rounded-[28px] border border-line bg-white p-6 shadow-card">
           <h3 className="font-display text-2xl">Spoken field brief</h3>
-          <p className="mt-2 text-sm leading-6 text-muted">Ninety-word CHPS card in English, Twi, Ewe, Ga or Hausa — then speak it.</p>
+          <p className="mt-2 text-sm leading-6 text-muted">Ninety-word CHPS card in English, Twi, Ewe, Ga or Hausa - then speak it.</p>
         </Link>
         <Link href="/climate" className="group rounded-[28px] border border-line bg-white p-6 shadow-card md:col-span-2">
           <CloudSun className="h-6 w-6 text-teal" />
-          <h3 className="mt-4 font-display text-2xl">Climate desk — OpenWeather across Ghana</h3>
+          <h3 className="mt-4 font-display text-2xl">Climate desk - OpenWeather across Ghana</h3>
           <p className="mt-2 text-sm leading-6 text-muted">Rain, heat and humidity sit next to cholera and malaria watches. This is the environmental pillar, not decoration.</p>
         </Link>
       </section>

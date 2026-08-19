@@ -50,7 +50,7 @@ export default function ClimatePage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Environmental pillar</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Climate across Ghana</h1>
       <p className="mt-3 max-w-3xl text-muted">
-        OpenWeather feeds Accra, Kumasi, Tamale and the other watch cities. Rain and humidity are pressure, not destiny — pair them with cholera and malaria intervals on the forecast desk.
+        OpenWeather feeds Accra, Kumasi, Tamale and the other watch cities. Rain and humidity are pressure, not destiny - pair them with cholera and malaria intervals on the forecast desk.
       </p>
       <div className="mt-5">
         <Disclaimer compact />

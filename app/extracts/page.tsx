@@ -48,7 +48,7 @@ export default function ExtractsPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">DHIMS2 / IDSR</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Load an official extract</h1>
       <p className="mt-3 text-muted">
-        This is the upgrade that matters more than another model. A weekly DHIMS2 or IDSR file replaces the demonstration series for that disease and geography. Aggregates only — no folder numbers.
+        This is the upgrade that matters more than another model. A weekly DHIMS2 or IDSR file replaces the demonstration series for that disease and geography. Aggregates only - no folder numbers.
       </p>
       <div className="mt-5">
         <Disclaimer compact />

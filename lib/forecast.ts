@@ -584,7 +584,7 @@ export function runForecast(opts: {
     { feature: "lag_2", weight: 0.12, caveat: "Short-term autocorrelation from reporting and transmission." },
     { feature: "rainy_season", weight: 0.11, caveat: "Calendar proxy for climate; not rainfall itself." },
     { feature: "week_of_year", weight: 0.1, caveat: "May mix true seasonality with reporting calendars." },
-    { feature: "rolling_std_4", weight: 0.08, caveat: "Volatility often rises before a wave — still not causation." },
+    { feature: "rolling_std_4", weight: 0.08, caveat: "Volatility often rises before a wave - still not causation." },
     { feature: "harmattan", weight: 0.06, caveat: "Relevant for CSM and some respiratory signals." },
     { feature: "lag_3 / lag_4", weight: 0.04, caveat: "Weaker once shorter lags are known." },
   ];
@@ -604,7 +604,7 @@ export function runForecast(opts: {
     featureImportance,
     narrative: {
       nowcast: `${region.name} ${disease.name.toLowerCase()} last week: ${latest.toLocaleString()} ${disease.unit}. Eight-week mean ${last8Mean.toFixed(0)} (z = ${latestZ.toFixed(2)}).`,
-      outlook: `Ensemble ${horizon}-week outlook averages ${outlookMean.toFixed(0)} ${disease.unit} (interval ${ensPts[0].low.toFixed(0)}–${ensPts[ensPts.length - 1].high.toFixed(0)} across the horizon). Prefer the interval over any single number.`,
+      outlook: `Ensemble ${horizon}-week outlook averages ${outlookMean.toFixed(0)} ${disease.unit} (interval ${ensPts[0].low.toFixed(0)}-${ensPts[ensPts.length - 1].high.toFixed(0)} across the horizon). Prefer the interval over any single number.`,
       oneHealth: `${disease.pillar === "human" ? "Pair this human signal with veterinary and climate layers." : disease.pillar === "animal" ? "Escalate jointly to Veterinary Services and GHS if human exposures appear." : "Treat this as an environmental pressure index that can precede enteric and vector-borne rises."} ${disease.seasonality}`,
       limits:
         "The model cannot see a new variant, a sudden WASH collapse, a strike that stops reporting, or a mass-vaccination campaign unless those events are in the loaded history. Field investigation remains mandatory.",

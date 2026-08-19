@@ -18,7 +18,7 @@ This repository turns the Phase 2 modelling workbook into a working system:
 
 ```bash
 cp .env.example .env.local
-# put OPENROUTER_API_KEY in .env.local — never commit it
+# put OPENROUTER_API_KEY in .env.local - never commit it
 npm install
 npm run dev
 ```
@@ -40,7 +40,7 @@ npm start
 
 The process listens on `0.0.0.0:$PORT`. Put keys in the host’s environment panel, not in the repo. Official DHIMS2 CSVs can be loaded on `/extracts`. Field briefs are on `/field`. Audit pack and the append-only event log download from `/admin`. Full inventory: [CHANGELOG.md](CHANGELOG.md).
 
-**Longevity:** every mutation is appended to `data/events.jsonl` and, if `DATABASE_URL` is set, to Postgres. That can last decades **only if** you keep that database and off-site backups. A free Render disk is wiped on sleep — it will not last 89 years by itself.
+**Longevity:** every mutation is appended to `data/events.jsonl` and, if `DATABASE_URL` is set, to Postgres. That can last decades **only if** you keep that database and off-site backups. A free Render disk is wiped on sleep - it will not last 89 years by itself.
 
 ## What to put in Render
 
@@ -60,7 +60,7 @@ Do **not** put secrets in `NEXT_PUBLIC_*`. That would publish them to every visi
 - **OpenRouter** is enough for most of the desk (many vendors behind one bill).
 - **Tavily** if you want cleaner citations than the DuckDuckGo fallback.
 - **ElevenLabs** if device TTS is not good enough for Twi-adjacent English briefings.
-- **Official GHS / DHIMS2 extracts** — not an API key, but the data that must replace the demonstration series before operational use.
+- **Official GHS / DHIMS2 extracts** - not an API key, but the data that must replace the demonstration series before operational use.
 
 We cannot mint API keys for you. Create them on those sites and paste them into Render’s Environment tab.
 

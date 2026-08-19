@@ -15,7 +15,7 @@ function safeSiteUrl() {
 
 export const metadata: Metadata = {
   title: {
-    default: "ONE HEALTH GHANA — National Disease Forecasting",
+    default: "ONE HEALTH GHANA - National Disease Forecasting",
     template: "%s · ONE HEALTH GHANA",
   },
   description:

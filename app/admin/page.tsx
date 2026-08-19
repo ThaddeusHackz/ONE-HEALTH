@@ -49,7 +49,7 @@ export default function AdminPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(partial),
     });
-    setMsg(res.ok ? "Saved — public site will pick this up on refresh." : "Save failed");
+    setMsg(res.ok ? "Saved - public site will pick this up on refresh." : "Save failed");
     await load();
   }
 
@@ -315,7 +315,7 @@ export default function AdminPage() {
           <div>
             <h1 className="font-display text-3xl">Provider desk</h1>
             <p className="mt-2 max-w-2xl text-sm text-muted">
-              Keys live only in server environment variables. This probe never prints a full secret. This sandbox may block outbound TLS — Render will not.
+              Keys live only in server environment variables. This probe never prints a full secret. This sandbox may block outbound TLS - Render will not.
             </p>
             <button onClick={() => void probe()} className="mt-4 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
               Test OpenRouter, Tavily, OpenWeather, ElevenLabs

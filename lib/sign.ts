@@ -17,6 +17,6 @@ export function verifyPayload(pack: { signature?: string; body?: unknown }) {
   const expected = createHmac("sha256", sessionSecret()).update(JSON.stringify(pack.body)).digest("hex");
   const a = Buffer.from(pack.signature);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: "signature mismatch — pack was altered or signed with another secret" };
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: "signature mismatch - pack was altered or signed with another secret" };
   return { ok: true, reason: "signature valid for this server secret" };
 }

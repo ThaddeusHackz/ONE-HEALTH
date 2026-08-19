@@ -1,4 +1,4 @@
-# Render.com forensic — current repo (2026-08-19)
+# Render.com forensic - current repo (2026-08-19)
 
 Live host probed: `https://one-health-ghana.onrender.com`.
 
@@ -28,19 +28,19 @@ That 400 is why Intelligence / Vision / Field / AI briefing looked broken. The k
 | Build `npm ci --include=dev && npm run build` | Correct |
 | Start `npm start` → `0.0.0.0` + `$PORT` | Correct |
 | Health `GET /api/health` | 200 |
-| Optional keys | `sync: false` — Blueprint Apply must not wipe dashboard secrets |
+| Optional keys | `sync: false` - Blueprint Apply must not wipe dashboard secrets |
 
 ## B. After this deploy
 
-1. Open `/api/health` — expect `openrouter: true` and `openrouterMaxModelsPerRequest: 3`.
-2. Open Admin → API desk → probe — OpenRouter should now return a live model, not 400.
+1. Open `/api/health` - expect `openrouter: true` and `openrouterMaxModelsPerRequest: 3`.
+2. Open Admin → API desk → probe - OpenRouter should now return a live model, not 400.
 3. Intelligence: send “Greater Accra cholera watch, no names.” Expect a model name, not the offline card.
 4. Climate: Accra temperature should be live.
 5. Field brief: draft + speak (browser voice if ElevenLabs is restricted).
 
 ## C. Still not “perfect”
 
-1. Free web **sleeps ~15 minutes** — next hit is a 30–60s cold start.
+1. Free web **sleeps ~15 minutes** - next hit is a 30-60s cold start.
 2. Free Postgres **expires ~30 days**.
 3. Free-model AI is rate-limited.
 4. Huge vision PDFs can OOM on 512 MB RAM.

@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!key) {
     return NextResponse.json({
       text: "",
-      note: "No OpenRouter key. Use the browser microphone (Web Speech API) — it works offline for English and several Ghana-relevant accents depending on the device.",
+      note: "No OpenRouter key. Use the browser microphone (Web Speech API) - it works offline for English and several Ghana-relevant accents depending on the device.",
     });
   }
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     if (!res.ok) {
       return NextResponse.json({
         text: "",
-        note: json.error?.message || "Whisper unavailable — use browser voice instead.",
+        note: json.error?.message || "Whisper unavailable - use browser voice instead.",
       });
     }
     return NextResponse.json({ text: json.text || "", model: "openai/whisper-large-v3" });

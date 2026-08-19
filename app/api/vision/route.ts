@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   }
 
   if (!files.length) {
-    return NextResponse.json({ error: "Attach at least one file — image, PDF, Word, Excel, CSV, or text." }, { status: 400 });
+    return NextResponse.json({ error: "Attach at least one file - image, PDF, Word, Excel, CSV, or text." }, { status: 400 });
   }
 
   try {

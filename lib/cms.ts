@@ -51,10 +51,10 @@ export const DEFAULT_NAV: NavItem[] = [
 export const DEFAULT_CONTENT: SiteContent = {
   brandEyebrow: "Ghana Health Service",
   brandName: "ONE HEALTH",
-  announcement: "Decision support only — forecasts are intervals, never certainty. An alert is not a confirmed outbreak.",
+  announcement: "Decision support only - forecasts are intervals, never certainty. An alert is not a confirmed outbreak.",
   announcementOn: true,
   heroKicker: "Ghana only · 2026 command layer",
-  heroTitle: "See the next month of Ghana’s health — with the humility of an interval.",
+  heroTitle: "See the next month of Ghana’s health - with the humility of an interval.",
   heroBody:
     "ONE HEALTH GHANA turns surveillance files, photographs, and weekly counts into probabilistic forecasts for the Ghana Health Service. Human, animal, and environmental signals share one white desk.",
   heroPrimary: "Open forecast desk",
@@ -62,10 +62,10 @@ export const DEFAULT_CONTENT: SiteContent = {
   heroCard: "16 regions · One Health signals · OpenRouter fallback · voice, vision, search, climate",
   pillarsTitle: "Three pillars, one Ghana desk",
   pillarsBody:
-    "Most emerging infections start where people, animals, and the environment meet — live-bird markets in Accra, rodent harvest stores in Oti, flood water in Odaw, harmattan dust in the Upper East.",
-  humanPillar: "Human — GHS / IDSR / DHIMS2. Notifiable diseases, ILI, facility load.",
-  animalPillar: "Animal — Veterinary Services. HPAI flocks, anthrax carcasses, abortive events.",
-  environmentPillar: "Environment — EPA / GMet / NADMO / OpenWeather. Flood index, rainfall, heat.",
+    "Most emerging infections start where people, animals, and the environment meet - live-bird markets in Accra, rodent harvest stores in Oti, flood water in Odaw, harmattan dust in the Upper East.",
+  humanPillar: "Human - GHS / IDSR / DHIMS2. Notifiable diseases, ILI, facility load.",
+  animalPillar: "Animal - Veterinary Services. HPAI flocks, anthrax carcasses, abortive events.",
+  environmentPillar: "Environment - EPA / GMet / NADMO / OpenWeather. Flood index, rainfall, heat.",
   pipelineTitle: "How a number is born",
   pipelineBody: "Copied from the Phase 2 workbook, then made operational for Ghana. Every arrow can introduce error.",
   signalsTitle: "Priority signals",

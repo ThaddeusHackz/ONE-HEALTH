@@ -1,12 +1,12 @@
 # 🔬 OPENROUTER FORENSIC SCAN REPORT
-## Automatic Provider Fallback & Rotation — Full Investigation
+## Automatic Provider Fallback & Rotation - Full Investigation
 ### Date: 2026-08-18 | Status: ✅ CONFIRMED POSSIBLE
 
 ---
 
 ## 🎯 THE SHORT ANSWER
 
-**YES — OpenRouter absolutely supports exactly what you described.**
+**YES - OpenRouter absolutely supports exactly what you described.**
 With ONE OpenRouter API key, you can configure automatic fallback chains like:
 
 > OpenAI (quota finished) → Gemini (quota finished) → Claude (quota finished) → Mistral → DeepSeek → Llama → ... → back to OpenAI when quota resets
@@ -15,7 +15,7 @@ This is **built into OpenRouter's core architecture**. You do NOT need multiple 
 
 ---
 
-## 📋 HOW IT WORKS — TWO LAYERS OF FALLBACK
+## 📋 HOW IT WORKS - TWO LAYERS OF FALLBACK
 
 ### LAYER 1: Model-Level Fallback (Cross-Provider)
 This is the PRIMARY feature you're asking about. You pass a `models` array in priority order.
@@ -47,7 +47,7 @@ response = requests.post(
 ```
 
 **What triggers fallback:**
-- ✅ Rate limiting (429 errors) — including quota exhaustion
+- ✅ Rate limiting (429 errors) - including quota exhaustion
 - ✅ Provider downtime (5xx errors)
 - ✅ Context length validation errors
 - ✅ Moderation flags / content filtering refusals
@@ -166,10 +166,10 @@ OpenRouter's `auto` router uses AI to pick the BEST model for each prompt automa
 |--------|---------|
 | OpenRouter markup | 5-15% on top of provider pricing |
 | Fallback billing | Only the model that SERVES the response is billed |
-| Failed attempts | FREE — not billed |
+| Failed attempts | FREE - not billed |
 | Minimum credit | $5 top-up via Stripe or crypto |
 | Free models | 29 `:free` variants available (rate-limited: 20 req/min) |
-| BYOK option | Bring Your Own Keys — 5% fee, first 1M requests/month free |
+| BYOK option | Bring Your Own Keys - 5% fee, first 1M requests/month free |
 
 ---
 
@@ -192,7 +192,7 @@ You asked: *"if OpenAI is finished then go to Gemini, if Gemini finished go to C
 
 ## ⚠️ IMPORTANT LIMITATIONS & CAVEATS
 
-1. **This is NOT unlimited.** Each provider has its own rate limits and quotas. OpenRouter doesn't bypass provider limits — it routes around them.
+1. **This is NOT unlimited.** Each provider has its own rate limits and quotas. OpenRouter doesn't bypass provider limits - it routes around them.
 
 2. **Different models = different quality.** A GPT-4.1 response and a Llama response are NOT interchangeable. Test your fallback chain for quality consistency.
 
@@ -263,10 +263,10 @@ const completion = await openRouter.chat.send({
 ## 🔍 FORENSIC SOURCES
 
 All information verified from:
-1. OpenRouter Official Docs — Model Fallbacks (https://openrouter.ai/docs/guides/routing/model-fallbacks)
-2. OpenRouter Official Docs — Provider Routing (https://openrouter.ai/docs/guides/routing/provider-selection)
-3. OpenRouter Official Docs — BYOK (https://openrouter.ai/docs/guides/overview/auth/byok)
-4. OpenRouter Official Docs — Rate Limits (https://openrouter.ai/docs/api_reference/limits)
+1. OpenRouter Official Docs - Model Fallbacks (https://openrouter.ai/docs/guides/routing/model-fallbacks)
+2. OpenRouter Official Docs - Provider Routing (https://openrouter.ai/docs/guides/routing/provider-selection)
+3. OpenRouter Official Docs - BYOK (https://openrouter.ai/docs/guides/overview/auth/byok)
+4. OpenRouter Official Docs - Rate Limits (https://openrouter.ai/docs/api_reference/limits)
 5. Multiple independent reviews & guides from 2025-2026
 
 ---

@@ -1,5 +1,5 @@
 # =============================================================================
-# ONE HEALTH GHANA — Companion notebook (Phase 2, modified)
+# ONE HEALTH GHANA - Companion notebook (Phase 2, modified)
 # Country default: Ghana. Bugs from code.txt are fixed here.
 # Run cell-by-cell in Google Colab or locally.
 # =============================================================================
@@ -25,7 +25,7 @@ COUNTRY = "Ghana"
 print("Environment ready. Country:", COUNTRY)
 
 # -----------------------------------------------------------------------------
-# MODULE 4 — Ingest (Ghana)
+# MODULE 4 - Ingest (Ghana)
 # -----------------------------------------------------------------------------
 url = "https://covid.ourworldindata.org/data/owid-covid-data.csv"
 df = pd.read_csv(url, usecols=["location", "date", "new_cases", "new_deaths", "population"])
@@ -36,7 +36,7 @@ print(df.isna().sum())
 print("duplicate dates", int(df.duplicated(subset="date").sum()))
 
 # -----------------------------------------------------------------------------
-# MODULE 5 — Clean
+# MODULE 5 - Clean
 # -----------------------------------------------------------------------------
 df["new_cases"] = df["new_cases"].clip(lower=0)
 weekly = (
@@ -51,17 +51,17 @@ weekly["is_imputed_gap"] = weekly["weekly_cases"].isna()
 print(weekly.head())
 
 # -----------------------------------------------------------------------------
-# MODULE 6 — EDA
+# MODULE 6 - EDA
 # -----------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(12, 5))
 ax.plot(weekly["date"], weekly["weekly_cases"], label="Weekly cases", alpha=0.6)
 ax.plot(weekly["date"], weekly["weekly_cases"].rolling(4).mean(), label="4-week rolling mean", color="black")
-ax.set_title(f"Weekly reported COVID-19 cases — {COUNTRY}")
+ax.set_title(f"Weekly reported COVID-19 cases - {COUNTRY}")
 ax.legend()
 plt.show()
 
 # -----------------------------------------------------------------------------
-# MODULE 7 — Diagnostics
+# MODULE 7 - Diagnostics
 # -----------------------------------------------------------------------------
 series = weekly.set_index("date")["weekly_cases"].dropna()
 if len(series) >= 104:
@@ -75,7 +75,7 @@ plot_pacf(series, lags=min(20, len(series) // 2 - 1), ax=axes[1])
 plt.show()
 
 # -----------------------------------------------------------------------------
-# MODULE 8 — Baselines (shifted: no leakage)
+# MODULE 8 - Baselines (shifted: no leakage)
 # -----------------------------------------------------------------------------
 s = weekly["weekly_cases"]
 baseline_df = pd.DataFrame({
@@ -87,7 +87,7 @@ baseline_df = pd.DataFrame({
 })
 
 # -----------------------------------------------------------------------------
-# MODULE 9 — Chronological split
+# MODULE 9 - Chronological split
 # -----------------------------------------------------------------------------
 train_end, test_start = "2022-01-01", "2023-01-01"
 print("TimeSeriesSplit folds:")
@@ -95,7 +95,7 @@ for fold, (tr, te) in enumerate(TimeSeriesSplit(n_splits=5).split(weekly)):
     print(fold, len(tr), len(te))
 
 # -----------------------------------------------------------------------------
-# MODULE 10 — Features AFTER shift, BEFORE split
+# MODULE 10 - Features AFTER shift, BEFORE split
 # -----------------------------------------------------------------------------
 fe = weekly.copy()
 for lag in (1, 2, 3, 4):
@@ -117,7 +117,7 @@ X_train, y_train = train_fe[feature_cols], train_fe["weekly_cases"]
 X_test, y_test = test_fe[feature_cols], test_fe["weekly_cases"]
 
 # -----------------------------------------------------------------------------
-# MODULE 12 — Models (RF on train only; SARIMA on train only)
+# MODULE 12 - Models (RF on train only; SARIMA on train only)
 # -----------------------------------------------------------------------------
 rf = RandomForestRegressor(n_estimators=300, random_state=42)
 rf.fit(X_train, y_train)
@@ -137,7 +137,7 @@ sarima_preds = pd.Series(sarima_fc.predicted_mean.values, index=test_fe.index)
 sarima_ci = sarima_fc.conf_int()
 
 # -----------------------------------------------------------------------------
-# MODULE 13 — Evaluation (aligned on dates)
+# MODULE 13 - Evaluation (aligned on dates)
 # -----------------------------------------------------------------------------
 
 def evaluate(y_true, y_pred, label: str) -> None:
@@ -158,7 +158,7 @@ evaluate(y_test, rf_preds, "Random forest")
 evaluate(y_test, sarima_preds, "SARIMA (train only)")
 
 # -----------------------------------------------------------------------------
-# MODULE 14 — Intervals
+# MODULE 14 - Intervals
 # -----------------------------------------------------------------------------
 tree_preds = np.stack([t.predict(X_test) for t in rf.estimators_])
 lower, upper = np.percentile(tree_preds, 5, axis=0), np.percentile(tree_preds, 95, axis=0)
@@ -166,12 +166,12 @@ plt.figure(figsize=(10, 5))
 plt.plot(test_fe["date"], y_test.values, label="Actual", color="black")
 plt.plot(test_fe["date"], rf_preds, label="RF", color="red")
 plt.fill_between(test_fe["date"], lower, upper, color="red", alpha=0.2, label="90% tree interval")
-plt.title(f"{COUNTRY} — RF with interval (not certainty)")
+plt.title(f"{COUNTRY} - RF with interval (not certainty)")
 plt.legend()
 plt.show()
 
 # -----------------------------------------------------------------------------
-# MODULE 15 — Early warning (fixed print + ffill)
+# MODULE 15 - Early warning (fixed print + ffill)
 # -----------------------------------------------------------------------------
 train = weekly[weekly["date"] < train_end].copy()
 weekly_analysis = weekly.copy()
@@ -184,11 +184,11 @@ weekly_analysis["z_score"] = (
 )
 weekly_analysis["alert"] = weekly_analysis["z_score"] > 2
 alerts_triggered = weekly_analysis[(weekly_analysis["date"] >= test_start) & (weekly_analysis["alert"])]
-print(f"Alerts ({len(alerts_triggered)}) — investigation prompts, not confirmed outbreaks")
+print(f"Alerts ({len(alerts_triggered)}) - investigation prompts, not confirmed outbreaks")
 print(alerts_triggered[["date", "weekly_cases", "z_score"]].head())
 
 # -----------------------------------------------------------------------------
-# MODULE 16 — Importance ≠ causation
+# MODULE 16 - Importance ≠ causation
 # -----------------------------------------------------------------------------
 print(pd.Series(rf.feature_importances_, index=feature_cols).sort_values(ascending=False))
 print("lag_1 dominance means last week predicts this week statistically. It is not a causal proof.")

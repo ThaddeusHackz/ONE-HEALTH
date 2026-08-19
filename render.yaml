@@ -41,7 +41,7 @@ services:
         value: GHS Administrator
       - key: SESSION_SECRET
         sync: false
-      # Dashboard secrets — never pin empty strings here or a Blueprint apply wipes keys.
+      # Dashboard secrets - never pin empty strings here or a Blueprint apply wipes keys.
       - key: TAVILY_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
