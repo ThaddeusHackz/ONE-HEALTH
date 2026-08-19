@@ -1,64 +1,67 @@
-# Render.com forensic — will every feature work?
+# Render.com forensic — current repo (2026-08-19)
 
-Date: 2026-08-19  
-**Boot verdict: YES**, as one Node web service, if you set the four required secrets.  
-**“Everything works just as locally” verdict: NO — not every feature, not forever, not on free disk.**
+**Live Render Apply was not run from this sandbox.** This is a full static + local-runtime audit of *this* branch (`arena/01a01814-one-health`).
 
-This is the honest map. Nothing here is a guess about a feature we did not implement.
+**Boot: YES.** One Node web service, health 200, all public pages 200, TypeScript clean, selftests pass.
 
-## A. Deploy plumbing (will the box come up?)
+**“Every feature works perfectly forever”: NO.** Host limits remain. They are listed below, not hidden.
 
-| Check | Result | If it fails |
-|---|---|---|
-| One process for UI + `/api` | Pass | — |
-| `0.0.0.0` + `$PORT` | Pass (`scripts/start.cjs`) | Render default PORT is 10000; we honour it |
-| `GET /api/health` → 200 | Pass (store errors swallowed) | Deploy would roll back |
-| Build has TypeScript/Tailwind | Pass (`npm ci --include=dev`) | Need `--include=dev` or `next build` cannot compile |
-| `next` at runtime | Pass (production dependency) | — |
-| Lint cannot fail the build | Pass (`eslint.ignoreDuringBuilds`) | Fixed this pass |
-| Invalid `NEXT_PUBLIC_SITE_URL` cannot crash build | Pass (safe URL helper) | Fixed this pass |
-| `pg` not webpack-bundled | Pass (`serverExternalPackages`) | Fixed this pass |
-| Node 22 | Pass (`.node-version` + `NODE_VERSION`) | — |
-| SIGTERM on deploy | Pass | — |
-| Secrets not in git | Pass | — |
-| Blueprint plan | **free** (as requested) | Spins down after idle; cold start 30–60s. Upgrade to starter when you want it always on. |
+## A. Plumbing (will Apply + first deploy succeed?)
 
-Required dashboard values: `OPENROUTER_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL`.  
-Optional keys default to empty so **Apply is not blocked**.
+| Item | Status |
+|---|---|
+| `render.yaml` web `plan: free` | Present |
+| Postgres `one-health-db` `plan: free` + `DATABASE_URL` fromDatabase | Present (one free DB per workspace; **expires ~30 days**) |
+| Build `npm ci --include=dev && npm run build` | Correct (Tailwind/TS are devDeps) |
+| Start `npm start` → `0.0.0.0` + `$PORT` | Correct |
+| Health `GET /api/health` | 200 locally; store errors swallowed |
+| Lint cannot fail build | `eslint.ignoreDuringBuilds` |
+| Bad site URL cannot crash build | `safeSiteUrl()` |
+| `pg` not webpack-bundled | `serverExternalPackages` |
+| Node 22 | `.node-version` + `NODE_VERSION` |
+| Secrets not in git | `.env.local` ignored |
+| Required dashboard secrets | `OPENROUTER_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL` |
+| Optional keys | Empty defaults — Apply not blocked |
 
-## B. Feature-by-feature on Render
+Frankfurt region is valid. Hobby/free web **still exists** in 2026, with 15-minute sleep, ~750 instance hours/month, and tight bandwidth.
 
-| Feature | Works on Render? | Condition |
-|---|---|---|
-| Home, regions, workbook, white UI | **Yes** | Always |
-| Forecast ensemble, CUSUM, intervals | **Yes** | Always (local engine) |
-| District overlay | **Yes** | Always |
-| Reporting-delay nowcast (numbers) | **Yes** | Always |
-| DHIMS2 CSV parse + quality log | **Yes** | Always |
-| Official series driving forecast | **Yes until restart** | Disk is ephemeral unless Postgres/disk add-on |
-| Surveillance snapshot | **Yes** | Always |
-| Climate / OpenWeather | **Yes if key** | Outbound HTTPS works on Render |
-| Tavily / DuckDuckGo search | **Yes** | Tavily if key; else DuckDuckGo HTML |
-| Intelligence chat | **Yes if OpenRouter key + credit** | 402 = no model |
-| OpenRouter review of extracts / nowcast | **Yes if key + credit** | Sandbox TLS block does **not** apply on Render |
-| Vision any-file | **Yes if key** | Large files can OOM on tiny RAM |
-| Field briefs + TTS | **Yes** | TTS needs ElevenLabs **or** browser speech |
-| Browser microphone | **Yes** | Runs in the visitor’s Chrome, not on Render |
-| Admin CMS | **Yes** | Login with `ADMIN_*` |
-| Signed audit download | **Yes** | HMAC with `SESSION_SECRET` |
-| Event log JSONL | **Yes, until sleep/redeploy** | Lost on free/ephemeral disk |
-| 89-year archive | **Blueprint now attaches free Postgres** | Snapshot + events restore after web sleep. Free DB may expire — upgrade to keep it. |
-| AI when paid credit is empty | **Tries `:free` OpenRouter models** | Still needs a valid key. Daily free-tier rate limits apply. |
+## B. Local proof (this machine, just re-run)
 
-## C. What I will not claim
+- `tsc --noEmit` OK  
+- Pages 200: `/` forecast surveillance climate intelligence vision extracts field regions workbook admin/login  
+- APIs 200: health config snapshot nowcast weather series-template robots sitemap  
+- Selftest: login, DHIMS2 quality, nowcast interval, archive growth, redaction, field brief  
 
-- I have not clicked **Apply** on your Render account from this sandbox. This is a static + runtime audit, not a live Render deploy.
-- I cannot promise “every feature works perfectly.” OpenRouter credit, file size, and disk policy are outside the repo.
-- Forecasts remain intervals. Render does not make them certain.
+Outbound TLS to OpenRouter from **this sandbox** still fails. **Render’s network does not have that block.**
 
-## D. How to deploy so this audit holds
+## C. Feature matrix on Render
 
-1. dashboard.render.com → New → Blueprint → `ThaddeusHackz/ONE-HEALTH` → branch `arena/01a01814-one-health`.
-2. Paste the four required secrets. Paste Tavily / ElevenLabs / OpenWeather / `DATABASE_URL` if you have them.
-3. Wait for health green. Open `https://YOUR-SERVICE.onrender.com/api/health` — `openrouter` should be `true`.
-4. Admin → API desk → probe. That is the live key test Render can do and this sandbox cannot.
+| Feature | On Render |
+|---|---|
+| Static/UI pages, Ghana desk, workbook PDF | Yes |
+| Forecast, CUSUM, district overlay, nowcast numbers | Yes, no key |
+| DHIMS2 parse + quality | Yes, no key |
+| Official series → forecast | Yes; kept across web sleep **if** free Postgres is still alive |
+| CMS / chats / audits | Same: survive web restart via snapshot in Postgres |
+| Event log JSONL | Written on instance disk; **also** to `ohg_events` if DB is up |
+| Chat / vision / extract review / field brief | Yes **if** key is set; paid models then `:free` models on 402 |
+| Weather | Yes if `OPENWEATHER_API_KEY`; else placeholder rows |
+| Tavily search | Yes if key; else DuckDuckGo HTML |
+| ElevenLabs speak | Yes if key; else browser TTS |
+| Microphone | Visitor’s browser, not Render |
+| Admin | Yes with `ADMIN_*` |
+| Signed audit | Yes (HMAC) |
+
+## D. Still not “perfect”
+
+1. Free web **sleeps ~15 minutes** — next hit is a 30–60s cold start.  
+2. Free Postgres **expires ~30 days** then a short grace window, then delete. Upgrade that DB to keep history.  
+3. Free-model AI is **rate-limited** and weaker than GPT/Claude. A 402 with no working `:free` path still means no live model.  
+4. Huge vision PDFs can OOM on 512 MB RAM.  
+5. I have not clicked Apply on *your* Render account.
+
+## E. Deploy so this audit holds
+
+Dashboard → New → Blueprint → `ThaddeusHackz/ONE-HEALTH` → branch `arena/01a01814-one-health` → fill the four secrets → Apply.
+
+Then open `/api/health` (expect `openrouter: true`, `postgres: true`) and Admin → API desk → probe.
