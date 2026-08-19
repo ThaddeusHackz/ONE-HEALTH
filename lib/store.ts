@@ -3,6 +3,7 @@ import { join } from "path";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { adminEmail, adminName, adminPassword } from "./env";
 import { DEFAULT_CONTENT, DEFAULT_KNOWLEDGE, DEFAULT_NAV, type NavItem, type SiteContent } from "./cms";
+import { appendEvent } from "./archive";
 import type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
 
 export type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
@@ -114,10 +115,11 @@ export function getDB(): Database {
   return load();
 }
 
-export function saveDB(mutator: (db: Database) => void): Database {
+export function saveDB(mutator: (db: Database) => void, meta?: { type: string; actor: string; payload?: unknown }): Database {
   const db = load();
   mutator(db);
   persist(db);
+  if (meta) appendEvent(meta.type, meta.actor, meta.payload ?? {});
   return db;
 }
 
@@ -128,8 +130,8 @@ export function uid(prefix: string) {
 export function logActivity(actor: string, action: string, detail = "") {
   saveDB((db) => {
     db.activity.unshift({ id: uid("act"), actor, action, detail, at: new Date().toISOString() });
-    db.activity = db.activity.slice(0, 300);
-  });
+    db.activity = db.activity.slice(0, 2000);
+  }, { type: "activity", actor, payload: { action, detail } });
 }
 
 export function publicConfig() {
@@ -148,6 +150,6 @@ export function findOfficialSeries(diseaseId: string, regionId: string, district
 export function recordAudit(row: Omit<AuditRow, "id" | "at">) {
   saveDB((db) => {
     db.audits.unshift({ id: uid("aud"), at: new Date().toISOString(), ...row });
-    db.audits = db.audits.slice(0, 500);
-  });
+    db.audits = db.audits.slice(0, 5000);
+  }, { type: "audit", actor: row.actor, payload: row });
 }

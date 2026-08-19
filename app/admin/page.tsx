@@ -129,9 +129,14 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
-            <a href="/api/admin/audit" className="mt-6 inline-block rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
-              Download signed audit pack
-            </a>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a href="/api/admin/audit" className="inline-block rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
+                Download signed audit pack
+              </a>
+              <a href="/api/archive?download=1" className="inline-block rounded-full border border-line bg-white px-5 py-3 text-sm font-semibold">
+                Download 89-year event log (JSONL)
+              </a>
+            </div>
             <h2 className="mt-8 font-semibold">Recent activity</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {activity.map((a) => (

@@ -23,6 +23,8 @@ export default function ExtractsPage() {
   const [districtId, setDistrictId] = useState("");
   const [note, setNote] = useState("");
   const [quality, setQuality] = useState<Quality | null>(null);
+  const [review, setReview] = useState("");
+  const [reviewModel, setReviewModel] = useState("");
 
   const districts = districtsFor(regionId).filter((d) => d.regionId === regionId);
 
@@ -35,6 +37,8 @@ export default function ExtractsPage() {
     });
     const json = await res.json();
     setQuality(json.quality || null);
+    setReview(json.review || "");
+    setReviewModel(json.reviewModel || "");
     setNote(res.ok ? `Stored ${json.weeks} weeks from ${file.name}` : json.error || "Upload failed");
   }
 
@@ -88,6 +92,12 @@ export default function ExtractsPage() {
           {quality.warnings.map((w) => (
             <p key={w} className="mt-2 text-ghana-red">{w}</p>
           ))}
+          {review && (
+            <div className="mt-4 rounded-2xl bg-green-soft p-4">
+              <div className="text-xs uppercase tracking-wider text-ghana-green">{reviewModel || "OpenRouter review"}</div>
+              <p className="mt-2 whitespace-pre-wrap">{review}</p>
+            </div>
+          )}
         </div>
       )}
     </div>

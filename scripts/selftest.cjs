@@ -89,9 +89,23 @@ async function json(path, opts) {
     if (!body.quality || typeof body.quality.completeness !== "number") throw new Error("no quality log");
   });
   await check("nowcast interval", async () => {
-    const { res, body } = await json("/api/nowcast?disease=malaria&region=national");
+    const { res, body } = await json("/api/nowcast?disease=malaria&region=national&ai=0");
     if (!res.ok) throw new Error("nowcast failed");
     if (!(body.nowcast?.current?.high >= body.nowcast?.current?.nowcast)) throw new Error("nowcast interval inverted");
+  });
+  await check("event archive grows", async () => {
+    const before = (await json("/api/health")).body.archive?.bytes || 0;
+    await json("/api/series", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        diseaseId: "measles",
+        regionId: "northern",
+        csv: "date,cases\n" + Array.from({ length: 10 }, (_, i) => `2025-02-${String(i + 10).padStart(2, "0")},${i + 3}`).join("\n"),
+      }),
+    });
+    const after = (await json("/api/health")).body.archive?.bytes || 0;
+    if (after < before) throw new Error("archive did not grow");
   });
   await check("field brief offline card", async () => {
     const { res, body } = await json("/api/field-brief", {

@@ -12,6 +12,7 @@ __pycache__
 .idea
 .vscode
 data/*.json
+data/*.jsonl
 data/uploads
 coverage
 tsconfig.tsbuildinfo

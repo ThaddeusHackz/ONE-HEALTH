@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { DHIMS2_TEMPLATE, parseDhims2 } from "@/lib/dhims2";
+import { openRouterReview } from "@/lib/or-review";
 import { findOfficialSeries, getDB, recordAudit, saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,11 @@ export async function POST(req: Request) {
       (s) => !(s.diseaseId === row.diseaseId && s.regionId === row.regionId && s.districtId === row.districtId),
     );
     db.officialSeries.unshift(row);
-    db.officialSeries = db.officialSeries.slice(0, 80);
+    db.officialSeries = db.officialSeries.slice(0, 400);
+  }, {
+    type: "official.series",
+    actor: "extracts",
+    payload: { id: row.id, diseaseId: row.diseaseId, regionId: row.regionId, weeks: row.points.length, quality },
   });
   recordAudit({
     actor: "series",
@@ -74,5 +79,12 @@ export async function POST(req: Request) {
     redactions: 0,
     detail: `${row.diseaseId}/${row.regionId} ${row.points.length} weeks completeness=${quality?.completeness ?? "n/a"}`,
   });
-  return NextResponse.json({ ok: true, weeks: row.points.length, id: row.id, quality });
+  const review = await openRouterReview("dhims2", {
+    quality,
+    weeks: row.points.length,
+    diseaseId: row.diseaseId,
+    regionId: row.regionId,
+    last4: row.points.slice(-4),
+  });
+  return NextResponse.json({ ok: true, weeks: row.points.length, id: row.id, quality, review: review.text, reviewModel: review.model });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { elevenLabsKey, openRouterKey, openWeatherKey, tavilyKey } from "@/lib/env";
+import { archiveStats } from "@/lib/archive";
 import { getDB } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -39,5 +40,7 @@ export function GET() {
       weather: Boolean(openWeatherKey()),
     },
     store,
+    archive: archiveStats(),
+    postgres: Boolean((process.env.DATABASE_URL || "").trim()),
   });
 }

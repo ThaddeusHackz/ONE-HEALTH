@@ -36,3 +36,5 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
+      - key: DATABASE_URL
+        sync: false
