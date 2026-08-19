@@ -95,9 +95,13 @@ function load(): Database {
 }
 
 function persist(db: Database) {
-  mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
   cache = db;
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(DB_PATH, JSON.stringify(db));
+  } catch (err) {
+    console.error("[store] persist degraded to memory:", (err as Error).message);
+  }
 }
 
 export function getDB(): Database {

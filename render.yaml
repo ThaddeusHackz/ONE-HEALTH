@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "22.12.0"
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
       - key: OPENROUTER_API_KEY

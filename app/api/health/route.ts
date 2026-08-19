@@ -5,7 +5,25 @@ import { getDB } from "@/lib/store";
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const db = getDB();
+  let store = {
+    documents: 0,
+    chats: 0,
+    forecasts: 0,
+    officialSeries: 0,
+    audits: 0,
+  };
+  try {
+    const db = getDB();
+    store = {
+      documents: db.documents.length,
+      chats: db.chats.length,
+      forecasts: db.forecasts.length,
+      officialSeries: db.officialSeries.length,
+      audits: db.audits.length,
+    };
+  } catch (err) {
+    console.error("[health] store read skipped", (err as Error).message);
+  }
   return NextResponse.json({
     ok: true,
     service: "ONE HEALTH GHANA",
@@ -20,12 +38,6 @@ export function GET() {
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
     },
-    store: {
-      documents: db.documents.length,
-      chats: db.chats.length,
-      forecasts: db.forecasts.length,
-      officialSeries: db.officialSeries.length,
-      audits: db.audits.length,
-    },
+    store,
   });
 }

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "ONE HEALTH GHANA — National disease forecasting, document vision, and early-warning system for the Ghana Health Service.",
+  "engines": {
+    "node": ">=20.11.0"
+  },
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",

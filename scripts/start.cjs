@@ -7,4 +7,13 @@ const child = spawn(
   { stdio: "inherit" },
 );
 
-child.on("exit", (code) => process.exit(code ?? 0));
+function shut(signal) {
+  if (!child.killed) child.kill(signal);
+}
+
+process.on("SIGTERM", () => shut("SIGTERM"));
+process.on("SIGINT", () => shut("SIGINT"));
+child.on("exit", (code, signal) => {
+  if (signal) process.kill(process.pid, signal);
+  process.exit(code ?? 0);
+});
