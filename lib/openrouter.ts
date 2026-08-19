@@ -316,7 +316,7 @@ export async function visionAnalyze(opts: {
     });
   } catch {
     return completeWithSystem({
-      user: `${opts.prompt}\n\n(Vision parts omitted after first chain failed — text-only fallback.)`,
+      user: `${opts.prompt}\n\n(Vision parts omitted after first chain failed - text-only fallback.)`,
       extraSystem: opts.extraSystem,
       models: FAST_MODELS,
       temperature: 0.2,

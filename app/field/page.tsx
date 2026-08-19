@@ -30,7 +30,7 @@ export default function FieldPage() {
       setSpeakable(json.speakable || json.text || "");
       setModel(json.model || "");
       const c = json.nowcast?.current;
-      setNow(c ? `Observed ${c.observed} · nowcast ${c.nowcast} (${c.low}–${c.high}) · reporting ${Math.round(c.completeness * 100)}%` : "");
+      setNow(c ? `Observed ${c.observed} · nowcast ${c.nowcast} (${c.low}-${c.high}) · reporting ${Math.round(c.completeness * 100)}%` : "");
     } finally {
       setBusy(false);
     }
@@ -60,7 +60,7 @@ export default function FieldPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">CHPS / district card</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Spoken field brief</h1>
       <p className="mt-3 text-muted">
-        Ninety words a community officer can hear in Twi, Ewe, Ga, Hausa or English. Speech uses ElevenLabs when the key is live, otherwise the device voice. Twi/Ewe synthesis is imperfect — read the text if the voice stumbles.
+        Ninety words a community officer can hear in Twi, Ewe, Ga, Hausa or English. Speech uses ElevenLabs when the key is live, otherwise the device voice. Twi/Ewe synthesis is imperfect - read the text if the voice stumbles.
       </p>
       <div className="mt-5">
         <Disclaimer compact />

@@ -33,15 +33,15 @@ print("Environment Ready.")
 ```
 
 ```markdown
-# MODULE 1 — Introduction to One Health and Pandemic Forecasting
+# MODULE 1 - Introduction to One Health and Pandemic Forecasting
 ### Concept
-**One Health** recognizes that human, animal, and environmental health are interconnected — most emerging infectious diseases (Ebola, avian influenza, COVID-19) originate at that interface.
+**One Health** recognizes that human, animal, and environmental health are interconnected - most emerging infectious diseases (Ebola, avian influenza, COVID-19) originate at that interface.
 
 **Surveillance** is the continuous collection and analysis of health data to detect abnormal patterns. An **outbreak** is a localized increase in cases above what is expected; an **epidemic** is a wider increase across a region; a **pandemic** is a global epidemic. **Forecasting** estimates future case counts from historical patterns; **early warning** flags when observed activity deviates enough from the expected baseline to warrant investigation.
 ```
 
 ```markdown
-# MODULE 2 — Framing the Epidemiological Problem
+# MODULE 2 - Framing the Epidemiological Problem
 ### Problem Statement Definition
 
 Before writing code, we define the problem formally:
@@ -59,7 +59,7 @@ Before writing code, we define the problem formally:
 
 ```python
 # =============================================================================
-# MODULE 4 — Understanding and Ingesting the Dataset
+# MODULE 4 - Understanding and Ingesting the Dataset
 # =============================================================================
 
 url = "https://covid.ourworldindata.org/data/owid-covid-data.csv"
@@ -89,7 +89,7 @@ print(f"Duplicated Dates: {df.duplicated(subset='date').sum()}")
 
 ```python
 # =============================================================================
-# MODULE 5 — Data Cleaning and Preprocessing
+# MODULE 5 - Data Cleaning and Preprocessing
 # =============================================================================
 
 # 1. Handle negative case counts (retrospective corrections)
@@ -125,7 +125,7 @@ print(weekly.isnull().sum())
 
 ```python
 # =============================================================================
-# MODULE 6 — Exploratory Data Analysis (EDA)
+# MODULE 6 - Exploratory Data Analysis (EDA)
 # =============================================================================
 
 fig, ax = plt.subplots(figsize=(12, 5))
@@ -142,7 +142,7 @@ ax.plot(
     linewidth=2
 )
 
-ax.set_title(f"Weekly Reported Cases – {country}")
+ax.set_title(f"Weekly Reported Cases - {country}")
 ax.set_xlabel("Date")
 ax.set_ylabel("Cases")
 ax.legend()
@@ -151,7 +151,7 @@ plt.show()
 
 ```python
 # =============================================================================
-# MODULE 7 — Time-Series Analysis Fundamentals
+# MODULE 7 - Time-Series Analysis Fundamentals
 # =============================================================================
 
 # Prepare series (drop NaNs for decomposition)
@@ -182,7 +182,7 @@ plt.show()
 
 ```python
 # =============================================================================
-# MODULE 8 — Baseline Forecasting Models
+# MODULE 8 - Baseline Forecasting Models
 # =============================================================================
 
 s = weekly["weekly_cases"]
@@ -206,7 +206,7 @@ print(baseline_df.tail(10))
 
 ```python
 # =============================================================================
-# MODULE 9 — Chronological Train / Validation / Test Design
+# MODULE 9 - Chronological Train / Validation / Test Design
 # =============================================================================
 
 # WARNING: Do NOT use random splitting (train_test_split) for time series!
@@ -232,7 +232,7 @@ print(f"Test Size:  {len(test)}")
 
 ```python
 # =============================================================================
-# MODULE 10 — Feature Engineering
+# MODULE 10 - Feature Engineering
 # =============================================================================
 
 fe = weekly.copy()
@@ -259,7 +259,7 @@ print(fe.head())
 
 ```python
 # =============================================================================
-# MODULE 12 — MODEL TRAINING (Part A: Random Forest)
+# MODULE 12 - MODEL TRAINING (Part A: Random Forest)
 # =============================================================================
 
 # Define feature columns (excluding target 'weekly_cases' and metadata)
@@ -295,7 +295,7 @@ rf_preds = rf.predict(X_test)
 
 ```python
 # =============================================================================
-# MODULE 12 — MODEL TRAINING (Part B: SARIMA)
+# MODULE 12 - MODEL TRAINING (Part B: SARIMA)
 # =============================================================================
 
 # SARIMA works on the raw series index, not the feature matrix
@@ -325,7 +325,7 @@ sarima_ci = sarima_forecast_obj.conf_int()
 
 ```python
 # =============================================================================
-# MODULE 13 — Model Evaluation
+# MODULE 13 - Model Evaluation
 # =============================================================================
 
 def evaluate(y_true, y_pred, label):
@@ -351,7 +351,7 @@ evaluate(y_test_reset, sarima_preds_s, "SARIMA")
 
 ```python
 # =============================================================================
-# MODULE 14 — Uncertainty and Forecast Intervals
+# MODULE 14 - Uncertainty and Forecast Intervals
 # =============================================================================
 
 # SARIMA already provides Confidence Intervals natively (calculated in previous step)
@@ -377,7 +377,7 @@ plt.show()
 
 ```python
 # =============================================================================
-# MODULE 15 — Outbreak Detection and Early Warning
+# MODULE 15 - Outbreak Detection and Early Warning
 # =============================================================================
 
 # Use Training data to establish baseline statistics
@@ -424,7 +424,7 @@ plt.show()
 
 ```python
 # =============================================================================
-# MODULE 16 — Interpreting the Model
+# MODULE 16 - Interpreting the Model
 # =============================================================================
 
 importances = pd.Series(rf.feature_importances_, index=feature_cols).sort_values(ascending=True)
@@ -439,7 +439,7 @@ print(importances)
 ```
 
 ```markdown
-# APPENDIX A — AI-Assistance Log Template
+# APPENDIX A - AI-Assistance Log Template
 ### Copy this table into a Markdown cell to track your progress and Gemini interactions.
 
 | Date | Task | Gemini Prompt (summary) | Response Used? | What Was Changed? | How Was It Validated? |

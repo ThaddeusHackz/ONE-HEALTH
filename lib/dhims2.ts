@@ -122,10 +122,10 @@ export function parseDhims2(csv: string): { points: DhimsPoint[]; quality: Dhims
 
   const span = points.length + missingWeeks.length;
   const completeness = span ? points.length / span : 0;
-  if (completeness < 0.85) warnings.push("Completeness under 85% — nowcast and forecasts will be weak.");
+  if (completeness < 0.85) warnings.push("Completeness under 85% - nowcast and forecasts will be weak.");
   if (negativesClipped) warnings.push(`${negativesClipped} negative cells clipped to 0 (typical DHIMS2 correction).`);
   if (duplicates.length) warnings.push(`${duplicates.length} duplicate week keys were summed.`);
-  if (points.length < 8) warnings.push("Fewer than 8 weeks — too short for a 4-week test window.");
+  if (points.length < 8) warnings.push("Fewer than 8 weeks - too short for a 4-week test window.");
 
   return {
     points,

@@ -7,20 +7,20 @@ const TOC: [string, string][] = [
   ["00", "How this project was made successful"],
   ["01", "Why the Phase 2 workbook exists"],
   ["02", "The Ghana One Health contract"],
-  ["03", "What we built — eleven rooms"],
-  ["04", "Repository map — every file that ships"],
+  ["03", "What we built - eleven rooms"],
+  ["04", "Repository map - every file that ships"],
   ["05", "Data that may enter the system"],
   ["06", "The statistical engine, as built"],
   ["07", "Early warning is not confirmation"],
-  ["08", "OpenRouter — one key, groups of three"],
+  ["08", "OpenRouter - one key, groups of three"],
   ["09", "The other keys: Tavily, OpenWeather, ElevenLabs"],
-  ["10", "Vision Lab — any file GHS can hold"],
+  ["10", "Vision Lab - any file GHS can hold"],
   ["11", "Intelligence, voice, search"],
   ["12", "Extracts, nowcast, field cards"],
   ["13", "Climate as a pillar, not decoration"],
   ["14", "Regions, districts, small cells"],
   ["15", "Admin, CMS, audit, archive"],
-  ["16", "Hosting on Render — what actually boots"],
+  ["16", "Hosting on Render - what actually boots"],
   ["17", "Forensic findings that changed the code"],
   ["18", "Ethics and what we refuse"],
   ["19", "Acceptance test for the class"],
@@ -29,7 +29,7 @@ const TOC: [string, string][] = [
 
 const DESKS = [
   { href: "/", name: "Home", job: "National briefing surface. Pillars, signals, honest limits, Ghana flag bar." },
-  { href: "/forecast", name: "Forecast desk", job: "Leakage-safe ensemble, 2–12 week horizon, interval not a point, official CSV overlay, delay nowcast, AI briefing." },
+  { href: "/forecast", name: "Forecast desk", job: "Leakage-safe ensemble, 2-12 week horizon, interval not a point, official CSV overlay, delay nowcast, AI briefing." },
   { href: "/surveillance", name: "Surveillance board", job: "All 13 signals, latest count, z-score, next-week interval. Watch vs investigate." },
   { href: "/climate", name: "Climate desk", job: "Parallel OpenWeather watch-cities plus a sitrep that may mix weather, search, and the ensemble." },
   { href: "/intelligence", name: "Intelligence", job: "Ghana-locked chat, web search, voice in/out, language, live ensemble attached to the prompt." },
@@ -56,7 +56,7 @@ const FILES: [string, string][] = [
   ["lib/ghana.ts", "Sixteen regions, thirteen signals, the Ghana-locked system prompt."],
   ["app/api/*", "Route handlers only. Secrets stay on the server."],
   ["notebooks/ghana_one_health_forecasting.py", "Reproducible classroom proof. SARIMA stays here."],
-  ["workbook/build_workbook_pdf.py", "Illustrated PDF generator (figures 1–9 are real pictures)."],
+  ["workbook/build_workbook_pdf.py", "Illustrated PDF generator (figures 1-9 are real pictures)."],
 ];
 
 const SIGNALS = [
@@ -67,7 +67,7 @@ const SIGNALS = [
   ["Yellow fever", "Human · arbo", "Sylvatic / urban. Forest edge, coverage gaps."],
   ["COVID-19", "Human · resp", "Endemic teaching series for chronological splits."],
   ["ILI", "Human · sentinel", "Practical early window on respiratory viruses."],
-  ["Mpox", "Human · zoo", "Market–household interface."],
+  ["Mpox", "Human · zoo", "Market-household interface."],
   ["Lassa", "Human · zoo", "Mastomys, harvest stores, dry-season intrusion."],
   ["TB", "Human · chronic", "Load signal, not an outbreak spike."],
   ["Avian influenza", "Animal", "Live-bird markets, backyard flocks."],
@@ -80,7 +80,7 @@ const MODELS = [
   ["Seasonal naive", "Same week last year (lag 52). Ghana’s two clocks: rains and harmattan."],
   ["4-week MA", "Recent momentum. Smooths noise, lags a true turn."],
   ["Holt linear", "Level + trend, fitted on train only. Dangerous if you let it run forever."],
-  ["Ridge", "lag_1–4, rolling mean/std (shifted), week, month, rainy, harmattan. Closed-form."],
+  ["Ridge", "lag_1-4, rolling mean/std (shifted), week, month, rainy, harmattan. Closed-form."],
   ["Random forest", "Same features, leakage-safe split. Percentile band, not a posterior."],
   ["Ensemble", "Three lowest MAE on the chronological hold-out. Ships only if it earns it."],
 ];
@@ -95,7 +95,7 @@ const KEYS = [
 ];
 
 const BUILD = [
-  ["1. Forensic the PDF", "The Phase 2 workbook was a 26-page Word export. Figures 1–6 were captions without pictures. The science inside it was sound."],
+  ["1. Forensic the PDF", "The Phase 2 workbook was a 26-page Word export. Figures 1-6 were captions without pictures. The science inside it was sound."],
   ["2. Repair the companion code", "code.txt was South Africa, had a syntax error in alerts, deprecated fillna, SARIMA fit on the full series, and a leaky RF merge."],
   ["3. Retarget Ghana", "Sixteen official regions. Thirteen One Health signals. Unit of analysis = region-week."],
   ["4. Build the statistical desk", "TypeScript engine so the website does not need Python at runtime. Notebook remains the proof."],
@@ -114,14 +114,14 @@ export default function WorkbookPage() {
         Phase 2 · modified · Ghana Health Service · systems edition
       </p>
       <h1 className="font-display mt-2 text-4xl tracking-tight md:text-6xl">
-        The systems workbook — how every part of ONE HEALTH GHANA was made
+        The systems workbook - how every part of ONE HEALTH GHANA was made
       </h1>
       <p className="mt-5 max-w-3xl text-lg leading-8 text-muted">
-        Original title: <i>ONE HEALTH PANDEMIC AND DISEASE OUTBREAK FORECASTING — Phase 2</i>.
+        Original title: <i>ONE HEALTH PANDEMIC AND DISEASE OUTBREAK FORECASTING - Phase 2</i>.
         The class notebook taught a single COVID series in Colab. The production brief is a
         national desk: sixteen regions, thirteen One Health signals, files and photographs,
         one OpenRouter key with a real fallback chain, voice, climate, extracts, and an honest
-        interval. This page is that brief <em>and</em> the build log — written so a district
+        interval. This page is that brief <em>and</em> the build log - written so a district
         director and a software examiner can both finish it.
       </p>
 
@@ -163,9 +163,9 @@ export default function WorkbookPage() {
       </section>
 
       <nav className="mt-10 rounded-[28px] border border-line bg-white p-6 shadow-card">
-        <h2 className="font-display text-2xl">Contents — twenty-one modules</h2>
+        <h2 className="font-display text-2xl">Contents - twenty-one modules</h2>
         <p className="mt-2 text-sm text-muted">
-          The original PDF had Modules 1–20 plus empty figure boxes. This edition keeps the
+          The original PDF had Modules 1-20 plus empty figure boxes. This edition keeps the
           scientific contract and adds the production systems that made the project succeed.
         </p>
         <ol className="mt-4 grid gap-2 md:grid-cols-2">
@@ -219,7 +219,7 @@ export default function WorkbookPage() {
           <li>Chronological splits. Random train/test is temporal leakage.</li>
           <li>Leakage-safe lags and rolling windows (always <code>shift(1)</code>).</li>
           <li>Baselines before machine learning. If a forest cannot beat last week, it does not brief the Minister.</li>
-          <li>Intervals, not points. Write <code>127 (105–151)</code>, never 127.</li>
+          <li>Intervals, not points. Write <code>127 (105-151)</code>, never 127.</li>
           <li>Alerts are not outbreaks. The model is not the analyst of record.</li>
           <li>No patient identifiers, ever.</li>
         </ul>
@@ -275,7 +275,7 @@ export default function WorkbookPage() {
 
       <article id="m03" className="mt-16">
         <Eyebrow n="03" />
-        <h2 className="font-display text-4xl tracking-tight">What we built — eleven rooms</h2>
+        <h2 className="font-display text-4xl tracking-tight">What we built - eleven rooms</h2>
         <img src="/images/system-architecture.png" alt="System architecture" className="mt-6 w-full rounded-[28px] border border-line bg-white shadow-card" />
         <p className="mt-3 text-center text-sm text-muted">Figure 3. Artefacts in, leakage-safe models, OpenRouter fallback, Ghana command UI.</p>
         <div className="mt-6 overflow-hidden rounded-[28px] border border-line bg-white shadow-card">
@@ -308,7 +308,7 @@ export default function WorkbookPage() {
 
       <article id="m04" className="mt-16">
         <Eyebrow n="04" />
-        <h2 className="font-display text-4xl tracking-tight">Repository map — every file that ships</h2>
+        <h2 className="font-display text-4xl tracking-tight">Repository map - every file that ships</h2>
         <p className="mt-4 leading-8">
           The production app is Next.js 15 (App Router) + TypeScript + Tailwind. There is no
           separate frontend and backend. Python exists only for the classroom notebook and the
@@ -343,13 +343,13 @@ export default function WorkbookPage() {
           <li><strong>Official weekly extract.</strong> DHIMS2 / IDSR CSV: week-ending or date + cases. Semicolon and tab accepted. Quality log records missing weeks, duplicates, negatives clipped, completeness.</li>
           <li><strong>Demonstration series.</strong> Epidemiologically shaped Ghana histories so the desk teaches before an official file arrives. Never pretend they are DHIMS2. The source badge on the forecast desk says <code>demonstration</code> or <code>official</code>.</li>
           <li><strong>Documents and photographs.</strong> Circulars, Word memos, Excel line lists, lab slips, CHPS tallies. Text layers are read locally. Images and PDFs go through the vision chain. Names, phones, folder numbers are redacted first.</li>
-          <li><strong>Climate.</strong> OpenWeather for watch-cities. Placeholder rows if the key is absent — labelled as such.</li>
+          <li><strong>Climate.</strong> OpenWeather for watch-cities. Placeholder rows if the key is absent - labelled as such.</li>
           <li><strong>Web.</strong> Tavily if present, else DuckDuckGo, weighted toward GHS, WHO, NADMO, Noguchi.</li>
         </ul>
         <p className="mt-4 leading-8">
           Cleaning rules from the original workbook are unchanged: clip negative corrections to 0;
           resample weekly; interpolate at most two internal weeks; flag the rest. Never delete a
-          spike because it looks ugly — it may be the outbreak.
+          spike because it looks ugly - it may be the outbreak.
         </p>
       </article>
 
@@ -360,10 +360,10 @@ export default function WorkbookPage() {
           <img src="/images/chrono-split.png" alt="Chronological split" className="w-full rounded-[28px] border border-line bg-white shadow-card" />
           <img src="/images/feature-pipeline.png" alt="Feature pipeline" className="w-full rounded-[28px] border border-line bg-white shadow-card" />
         </div>
-        <p className="mt-3 text-center text-sm text-muted">Figures 5–6. Chronological split. Rolling windows only after a leakage-safe shift.</p>
+        <p className="mt-3 text-center text-sm text-muted">Figures 5-6. Chronological split. Rolling windows only after a leakage-safe shift.</p>
         <p className="mt-6 leading-8">
           Target: weekly reported or suspected counts for a named notifiable disease. Horizon:
-          four weeks default (2–12 allowed). Split: chronological. Features are computed after a
+          four weeks default (2-12 allowed). Split: chronological. Features are computed after a
           shift so tomorrow’s rain flag does not sneak into today’s prediction.
         </p>
         <p className="mt-4 leading-8">
@@ -372,7 +372,7 @@ export default function WorkbookPage() {
         <ol className="mt-3 list-decimal space-y-2 pl-5 leading-7">
           <li>Load official points if an extract exists for that disease × geography; otherwise generate a 260-week Ghana-shaped demonstration series (seeded, reproducible).</li>
           <li>Hold out the last ~20% (capped at 26 weeks). Train never sees the hold-out.</li>
-          <li>Build features on the training window only: lag 1–4, rolling mean/std of the previous four weeks, week-of-year, month, rainy-season flag, harmattan flag.</li>
+          <li>Build features on the training window only: lag 1-4, rolling mean/std of the previous four weeks, week-of-year, month, rainy-season flag, harmattan flag.</li>
           <li>Fit ridge (closed-form, tiny L2) and a 24-tree forest. Fit Holt on train only.</li>
           <li>Score every family against the hold-out with MAE, RMSE, sMAPE.</li>
           <li>Ensemble the three lowest-MAE families. Print the interval union.</li>
@@ -387,7 +387,7 @@ export default function WorkbookPage() {
           ))}
         </div>
         <p className="mt-6 leading-8">
-          sMAPE exists because cholera and yellow fever sit near zero most weeks — MAPE explodes.
+          sMAPE exists because cholera and yellow fever sit near zero most weeks - MAPE explodes.
           Tree percentiles approximate forest intervals; they are not a Bayesian posterior. SARIMA
           stays in the Python notebook for teaching native prediction intervals. Deep nets are not
           justified on a few hundred weekly points.
@@ -418,7 +418,7 @@ export default function WorkbookPage() {
 
       <article id="m08" className="mt-16">
         <Eyebrow n="08" />
-        <h2 className="font-display text-4xl tracking-tight">OpenRouter — one key, groups of three</h2>
+        <h2 className="font-display text-4xl tracking-tight">OpenRouter - one key, groups of three</h2>
         <p className="mt-4 leading-8">
           There is a single server-side <code>OPENROUTER_API_KEY</code>. It is never shipped to the
           browser. One key is enough because OpenRouter already sits in front of OpenAI, Google,
@@ -437,7 +437,7 @@ export default function WorkbookPage() {
           <li>A dead GPT-4.1 slug does not kill Gemini in the same group, or the next group.</li>
           <li>A 402 (empty OpenRouter balance) drops the remaining paid groups and retries <code>:free</code> models.</li>
           <li>Last resort is <code>openrouter/auto</code>.</li>
-          <li>401 / true auth-403 stops the chain and tells the officer the key was rejected — we do not pretend it worked.</li>
+          <li>401 / true auth-403 stops the chain and tells the officer the key was rejected - we do not pretend it worked.</li>
         </ol>
         <p className="mt-4 leading-8">
           Failed attempts are not billed. Quota on one vendor is transient: the next request starts
@@ -480,14 +480,14 @@ export default function WorkbookPage() {
         </p>
         <p className="mt-4 leading-8">
           Never put a secret in <code>NEXT_PUBLIC_*</code>. Those strings are compiled into the
-          browser bundle. The blueprint no longer pins empty strings for optional keys — an empty
+          browser bundle. The blueprint no longer pins empty strings for optional keys - an empty
           default would wipe a dashboard secret on the next Apply.
         </p>
       </article>
 
       <article id="m10" className="mt-16">
         <Eyebrow n="10" />
-        <h2 className="font-display text-4xl tracking-tight">Vision Lab — any file GHS can hold</h2>
+        <h2 className="font-display text-4xl tracking-tight">Vision Lab - any file GHS can hold</h2>
         <p className="mt-4 leading-8">
           A district office does not live in a single CSV. The Vision Lab accepts PDF circulars,
           Word memos, Excel line lists, CSV extracts, lab photos and IDSR scans. Text layers are
@@ -510,7 +510,7 @@ export default function WorkbookPage() {
           <Card title="Ghana-locked chat" body="The system prompt is GHANA_CONTEXT. Sixteen regions. Thirteen signals. No invented circulars. Optional live ensemble JSON is attached when a disease is selected." />
           <Card title="Web search" body="Tavily advanced search over GHS / MoH / WHO / NADMO / Noguchi domains. DuckDuckGo HTML is the offline path. Hits are labelled unverified." />
           <Card title="Voice in" body="Web Speech API on Chrome / Edge (en-GH). Optional Whisper via OpenRouter if the host exposes /v1/audio/transcriptions." />
-          <Card title="Voice out" body="ElevenLabs multilingual when the key can speak. Restricted keys fail /v1/user with missing_permissions — the desk probes /v1/voices instead. Otherwise the device voice." />
+          <Card title="Voice out" body="ElevenLabs multilingual when the key can speak. Restricted keys fail /v1/user with missing_permissions - the desk probes /v1/voices instead. Otherwise the device voice." />
         </div>
       </article>
 
@@ -544,7 +544,7 @@ export default function WorkbookPage() {
           Sunyani. Requests run in parallel so the desk does not wait on ten sequential handshakes.
           Rain and humidity are pressure, not destiny. Pair them with cholera and malaria intervals
           on the forecast desk. The morning sitrep may mix weather, Tavily hits, and the national
-          ensemble — still an investigation draft, still not a circular.
+          ensemble - still an investigation draft, still not a circular.
         </p>
       </article>
 
@@ -575,7 +575,7 @@ export default function WorkbookPage() {
 
       <article id="m16" className="mt-16">
         <Eyebrow n="16" />
-        <h2 className="font-display text-4xl tracking-tight">Hosting on Render — what actually boots</h2>
+        <h2 className="font-display text-4xl tracking-tight">Hosting on Render - what actually boots</h2>
         <p className="mt-4 leading-8">
           One Node web service. Build: <code>npm ci --include=dev && npm run build</code>. Start:{" "}
           <code>npm start</code> binds <code>0.0.0.0</code> and honours <code>$PORT</code>. Health:{" "}
@@ -584,7 +584,7 @@ export default function WorkbookPage() {
         <p className="mt-4 leading-8">
           Render free web sleeps after ~15 minutes. The next visitor waits on a cold start. Free
           Postgres expires on Render’s hobby clock. Huge vision PDFs can exhaust 512&nbsp;MB RAM.
-          Outbound TLS from some sandboxes fails even when the key is valid — use Admin → API desk
+          Outbound TLS from some sandboxes fails even when the key is valid - use Admin → API desk
           on the live host. None of this is hidden in the product copy.
         </p>
         <p className="mt-4 leading-8">

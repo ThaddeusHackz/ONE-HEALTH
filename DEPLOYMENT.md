@@ -1,12 +1,12 @@
 # Deploy ONE HEALTH GHANA on Render.com
 
-You will create **one Web Service**. There is no separate frontend and backend — Next.js serves both.
+You will create **one Web Service**. There is no separate frontend and backend - Next.js serves both.
 
 ## 0. Push this branch
 
 ```bash
 git add -A
-git commit -m "ONE HEALTH GHANA — forecast desk, vision, OpenRouter"
+git commit -m "ONE HEALTH GHANA - forecast desk, vision, OpenRouter"
 git push origin arena/01a0189f-one-health
 ```
 
@@ -65,8 +65,8 @@ CMS login is `/admin` (default local: `admin@ghs.gov.gh` / the password you set)
 
 ## 4. Free-tier notes
 
-- The first request after idle can take 30–60 seconds. That is Render spinning the box, not a model failure.
-- OpenRouter **402** means the credit balance is empty — no fallback will save you until you top up.
+- The first request after idle can take 30-60 seconds. That is Render spinning the box, not a model failure.
+- OpenRouter **402** means the credit balance is empty - no fallback will save you until you top up.
 - Official DHIMS2 data is still your responsibility to load. The shipped series are epidemiologically shaped **demonstrations**.
 
 ## 5. Local preview of production

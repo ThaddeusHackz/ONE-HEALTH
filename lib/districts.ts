@@ -5,7 +5,7 @@ export interface District {
   scale: number;
 }
 
-/** Representative MMDAs in every region — not the full 261, which would invite small-cell risk. */
+/** Representative MMDAs in every region - not the full 261, which would invite small-cell risk. */
 export const DISTRICTS: District[] = [
   { id: "accra-metro", name: "Accra Metro", regionId: "greater-accra", scale: 1.15 },
   { id: "tema", name: "Tema", regionId: "greater-accra", scale: 0.85 },

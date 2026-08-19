@@ -162,7 +162,7 @@ function ForecastInner() {
             <Stat
               label="Next week ensemble"
               value={Math.round(data.ensemble.points[0]?.point || 0).toLocaleString()}
-              hint={`${Math.round(data.ensemble.points[0]?.low || 0)}–${Math.round(data.ensemble.points[0]?.high || 0)}`}
+              hint={`${Math.round(data.ensemble.points[0]?.low || 0)}-${Math.round(data.ensemble.points[0]?.high || 0)}`}
             />
             <Stat label="Test MAE (best family)" value={Math.min(...data.models.map((m) => m.mae)).toFixed(1)} hint="vs held-out 26 weeks" />
           </div>
@@ -170,7 +170,7 @@ function ForecastInner() {
             <div className="mt-4 rounded-3xl border border-line bg-white p-5 text-sm">
               <div className="font-semibold">Reporting-delay nowcast (not a final count)</div>
               <p className="mt-1">
-                Observed {data.nowcast.current.observed} · delay-adjusted {data.nowcast.current.nowcast} ({data.nowcast.current.low}–{data.nowcast.current.high}) · reporting assumed {Math.round(data.nowcast.current.completeness * 100)}% this week
+                Observed {data.nowcast.current.observed} · delay-adjusted {data.nowcast.current.nowcast} ({data.nowcast.current.low}-{data.nowcast.current.high}) · reporting assumed {Math.round(data.nowcast.current.completeness * 100)}% this week
               </p>
               <p className="mt-2 text-xs text-muted">{data.nowcast.caveat}</p>
             </div>

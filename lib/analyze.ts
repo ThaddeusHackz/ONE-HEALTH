@@ -42,7 +42,7 @@ Return markdown with:
 6. Confidence (low / moderate / high) and the next human verification step
 
 TEXT EXTRACTS:
-${textBlock || "(no text layer — rely on vision / file parts)"}`;
+${textBlock || "(no text layer - rely on vision / file parts)"}`;
 
   let analysis = "";
   let model = "local-extract";
@@ -63,7 +63,7 @@ ${textBlock || "(no text layer — rely on vision / file parts)"}`;
       model = "extract-fallback";
     }
   } else {
-    analysis = `OpenRouter key not loaded. Local extracts:\n\n${textBlock.slice(0, 4000) || "Images queued — connect the key to read them."}`;
+    analysis = `OpenRouter key not loaded. Local extracts:\n\n${textBlock.slice(0, 4000) || "Images queued - connect the key to read them."}`;
   }
 
   const saved: DocumentRow[] = [];

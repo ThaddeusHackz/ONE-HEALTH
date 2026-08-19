@@ -30,7 +30,7 @@ const CITIES: { regionId: string; q: string }[] = [
 
 export async function ghanaWeather(): Promise<{ ok: boolean; rows: CityWeather[]; note: string }> {
   const key = openWeatherKey();
-  if (!key) return { ok: false, rows: fallbackRows(), note: "OPENWEATHER_API_KEY not set — showing climatic placeholders." };
+  if (!key) return { ok: false, rows: fallbackRows(), note: "OPENWEATHER_API_KEY not set - showing climatic placeholders." };
 
   const settled = await Promise.all(
     CITIES.map(async (c) => {

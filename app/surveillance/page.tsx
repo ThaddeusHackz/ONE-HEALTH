@@ -80,7 +80,7 @@ export default function SurveillancePage() {
                 <td>
                   {Math.round(r.nextWeek).toLocaleString()}
                   <div className="text-[11px] text-muted">
-                    {Math.round(r.low)}–{Math.round(r.high)}
+                    {Math.round(r.low)}-{Math.round(r.high)}
                   </div>
                 </td>
                 <td className="pr-4">

@@ -1,4 +1,4 @@
-# Inventory — everything built on this branch
+# Inventory - everything built on this branch
 
 This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a0189f-one-health`.
 
@@ -28,16 +28,16 @@ This is the complete list of work from the ONE HEALTH GHANA session. Latest fore
 ## Public desks
 
 - [x] Home (white 2026 UI, Ghana flag + teal)
-- [x] `/forecast` — ensemble, intervals, CUSUM, district, official CSV, delay nowcast
-- [x] `/surveillance` — national z-score board
-- [x] `/climate` — OpenWeather + sitrep
-- [x] `/intelligence` — chat, voice in/out, search, languages
-- [x] `/vision` — any file (PDF, Word, Excel, CSV, images) + redaction
-- [x] `/extracts` — DHIMS2 quality ingest + template
-- [x] `/field` — spoken field briefs (en/tw/ee/gaa/ha)
-- [x] `/regions` — 16 regions + representative MMDAs
-- [x] `/workbook` — modified Phase 2 + PDF download
-- [x] `/admin` — Wix-style CMS (copy, colours, nav, knowledge, records, API probe, signed audit, event log)
+- [x] `/forecast` - ensemble, intervals, CUSUM, district, official CSV, delay nowcast
+- [x] `/surveillance` - national z-score board
+- [x] `/climate` - OpenWeather + sitrep
+- [x] `/intelligence` - chat, voice in/out, search, languages
+- [x] `/vision` - any file (PDF, Word, Excel, CSV, images) + redaction
+- [x] `/extracts` - DHIMS2 quality ingest + template
+- [x] `/field` - spoken field briefs (en/tw/ee/gaa/ha)
+- [x] `/regions` - 16 regions + representative MMDAs
+- [x] `/workbook` - modified Phase 2 + PDF download
+- [x] `/admin` - Wix-style CMS (copy, colours, nav, knowledge, records, API probe, signed audit, event log)
 
 ## Engine and APIs
 
@@ -51,8 +51,8 @@ This is the complete list of work from the ONE HEALTH GHANA session. Latest fore
 
 ## Hosting
 
-- [x] `render.yaml` — **free** web + **free** Postgres, `DATABASE_URL` wired
-- [x] `scripts/start.cjs` — `0.0.0.0` + `$PORT` + SIGTERM
+- [x] `render.yaml` - **free** web + **free** Postgres, `DATABASE_URL` wired
+- [x] `scripts/start.cjs` - `0.0.0.0` + `$PORT` + SIGTERM
 - [x] Safe `NEXT_PUBLIC_SITE_URL`, lint cannot fail build, `pg` external
 - [x] `DEPLOYMENT.md`, `docs/RENDER_FORENSIC.md`
 - [x] Secrets only in env (never committed)

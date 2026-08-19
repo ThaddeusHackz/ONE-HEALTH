@@ -101,9 +101,9 @@ function persistChat(messages: { role: string; content: string }[], model: strin
 function offlineAnswer(q: string): string {
   const s = q.toLowerCase();
   if (s.includes("malaria")) {
-    return `**Malaria — Ghana (offline briefing)**
+    return `**Malaria - Ghana (offline briefing)**
 
-Malaria remains Ghana’s highest-burden notifiable disease. Transmission typically rises in the major rains (May–October), with heavy loads in savannah and forest regions.
+Malaria remains Ghana’s highest-burden notifiable disease. Transmission typically rises in the major rains (May-October), with heavy loads in savannah and forest regions.
 
 **What the system can do once keys are connected:** ingest DHIMS2 weekly confirmed cases, run leakage-safe 4-week forecasts with intervals, and flag z-score departures for district investigation.
 
@@ -112,13 +112,13 @@ Malaria remains Ghana’s highest-burden notifiable disease. Transmission typica
 Add \`OPENROUTER_API_KEY\` on the server to unlock live multi-model reasoning.`;
   }
   if (s.includes("cholera")) {
-    return `**Cholera — Ghana (offline briefing)**
+    return `**Cholera - Ghana (offline briefing)**
 
-Watch Greater Accra, Central, Western and flood-prone Volta settlements in the rains. Pair human IDSR signals with NADMO flood reports and water-quality notes — that is One Health, not a single line list.
+Watch Greater Accra, Central, Western and flood-prone Volta settlements in the rains. Pair human IDSR signals with NADMO flood reports and water-quality notes - that is One Health, not a single line list.
 
 An alert (z > 2) is a prompt to check reporting backlogs, water points, and stool-culture capacity. It is not confirmation.`;
   }
-  return `**ONE HEALTH GHANA — offline mode**
+  return `**ONE HEALTH GHANA - offline mode**
 
 Live multi-model intelligence needs a server-side \`OPENROUTER_API_KEY\`. Statistical forecasts, outbreak z-scores, and the Ghana knowledge layer still run locally.
 

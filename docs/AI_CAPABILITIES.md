@@ -1,4 +1,4 @@
-# Forensic scan — AI capabilities for ONE HEALTH GHANA
+# Forensic scan - AI capabilities for ONE HEALTH GHANA
 
 Date: 2026-08-19  
 Constraint: Ghana Health Service only. Capabilities must be justified by the four live keys, not by fantasy.
@@ -25,16 +25,16 @@ Constraint: Ghana Health Service only. Capabilities must be justified by the fou
 
 ## High-value next capabilities (still Ghana-only)
 
-These are the ones that would genuinely change GHS practice — **if and only if official data is wired**. None of them make forecasts error-free.
+These are the ones that would genuinely change GHS practice - **if and only if official data is wired**. None of them make forecasts error-free.
 
-1. **DHIMS2 / IDSR connector** — replace demonstration series with weekly official extracts. This is the single most important upgrade. It is a data-governance project, not another model.  
-2. **District (not only region) unit** — once counts are complete enough that small-cell risk is managed.  
-3. **Nowcast + delay correction** — reporting lag models (the workbook already warns about this).  
-4. **Bilingual field briefs** — Twi / Ewe / Ga / Hausa summaries via OpenRouter, spoken via ElevenLabs, for CHPS compounds.  
-5. **Redaction gate** — automatic strip of names, phones, folder numbers before a file reaches a model.  
+1. **DHIMS2 / IDSR connector** - replace demonstration series with weekly official extracts. This is the single most important upgrade. It is a data-governance project, not another model.  
+2. **District (not only region) unit** - once counts are complete enough that small-cell risk is managed.  
+3. **Nowcast + delay correction** - reporting lag models (the workbook already warns about this).  
+4. **Bilingual field briefs** - Twi / Ewe / Ga / Hausa summaries via OpenRouter, spoken via ElevenLabs, for CHPS compounds.  
+5. **Redaction gate** - automatic strip of names, phones, folder numbers before a file reaches a model.  
 6. **CUSUM / WHO alert thresholds** beside the simple z-score.  
 7. **Veterinary + NADMO layers** as first-class time series, not only weather.  
-8. **Audit export** — every AI briefing with model name, prompt hash, and human sign-off for the AI-assistance log.
+8. **Audit export** - every AI briefing with model name, prompt hash, and human sign-off for the AI-assistance log.
 
 ## Explicitly rejected
 
