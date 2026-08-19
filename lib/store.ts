@@ -79,7 +79,7 @@ function load(): Database {
         ...emptyDb(),
         ...raw,
         content: { ...DEFAULT_CONTENT, ...(raw.content || {}) },
-        nav: raw.nav?.length ? raw.nav : DEFAULT_NAV.map((n) => ({ ...n })),
+        nav: mergeNav(raw.nav),
         officialSeries: raw.officialSeries || [],
         audits: raw.audits || [],
         admins: raw.admins?.length ? raw.admins : [seedAdmin()],
@@ -92,6 +92,12 @@ function load(): Database {
   cache = emptyDb();
   persist(cache);
   return cache;
+}
+
+function mergeNav(existing?: NavItem[]): NavItem[] {
+  const have = new Set((existing || []).map((n) => n.href));
+  const extra = DEFAULT_NAV.filter((n) => !have.has(n.href));
+  return [...(existing || DEFAULT_NAV.map((n) => ({ ...n }))), ...extra];
 }
 
 function persist(db: Database) {

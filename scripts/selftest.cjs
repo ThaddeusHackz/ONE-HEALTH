@@ -78,8 +78,31 @@ async function json(path, opts) {
     });
     if ((body.text || "").includes("0244123456")) throw new Error("phone leaked");
   });
+  await check("DHIMS2 parser quality", async () => {
+    const csv = "week_ending,region,disease,cases\n" + Array.from({ length: 12 }, (_, i) => `2025-0${(i % 9) + 1}-0${(i % 8) + 1},Greater Accra,Cholera,${4 + i}`).join("\n");
+    const { res, body } = await json("/api/series", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ diseaseId: "cholera", regionId: "greater-accra", csv }),
+    });
+    if (!res.ok) throw new Error(body.error || "dhims2 failed");
+    if (!body.quality || typeof body.quality.completeness !== "number") throw new Error("no quality log");
+  });
+  await check("nowcast interval", async () => {
+    const { res, body } = await json("/api/nowcast?disease=malaria&region=national");
+    if (!res.ok) throw new Error("nowcast failed");
+    if (!(body.nowcast?.current?.high >= body.nowcast?.current?.nowcast)) throw new Error("nowcast interval inverted");
+  });
+  await check("field brief offline card", async () => {
+    const { res, body } = await json("/api/field-brief", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ diseaseId: "malaria", regionId: "northern", language: "tw" }),
+    });
+    if (!res.ok || !body.text) throw new Error("field brief empty");
+  });
   await check("pages", async () => {
-    for (const p of ["/", "/forecast", "/vision", "/climate", "/admin/login"]) {
+    for (const p of ["/", "/forecast", "/vision", "/climate", "/extracts", "/field", "/admin/login"]) {
       const res = await fetch(base + p);
       if (!res.ok) throw new Error(`${p} ${res.status}`);
     }

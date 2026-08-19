@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { REGIONS } from "@/lib/ghana";
+import { districtsFor, DISTRICTS } from "@/lib/districts";
 
 export const metadata = { title: "Regions" };
 
@@ -9,7 +10,7 @@ export default function RegionsPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">Geographic unit</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Sixteen regions, Ghana only</h1>
       <p className="mt-3 max-w-3xl text-muted">
-        Population figures are census-scale references for rate thinking, not a live DHIMS2 extract. Replace them with the official mid-year estimate before computing incidence.
+        Population figures are census-scale references for rate thinking, not a live DHIMS2 extract. {DISTRICTS.length} representative MMDAs sit under the 16 regions — not all 261, because small-cell counts re-identify. Completeness is “every region has districts,” not “every MMDA is listed.”
       </p>
       <img src="/images/ghana-regions.png" alt="Ghana regions" className="mt-8 w-full rounded-[28px] border border-line bg-white shadow-card" />
       <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

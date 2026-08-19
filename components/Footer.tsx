@@ -23,6 +23,8 @@ export function Footer() {
             <Link href="/intelligence">AI epidemiologist</Link>
             <Link href="/vision">Any-file vision</Link>
             <Link href="/climate">Climate desk</Link>
+            <Link href="/extracts">DHIMS2 extracts</Link>
+            <Link href="/field">Field brief</Link>
             <Link href="/admin">Admin CMS</Link>
           </div>
         </div>

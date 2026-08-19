@@ -24,7 +24,7 @@ function ForecastInner() {
   const [regionId, setRegionId] = useState(params.get("region") || "national");
   const [districtId, setDistrictId] = useState("");
   const [horizon, setHorizon] = useState(4);
-  const [data, setData] = useState<ForecastBundle & { briefing?: string; briefingModel?: string } | null>(null);
+  const [data, setData] = useState<(ForecastBundle & { briefing?: string; briefingModel?: string; nowcast?: { current: { observed: number; nowcast: number; low: number; high: number; completeness: number }; caveat: string } }) | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [seriesNote, setSeriesNote] = useState("");
@@ -161,6 +161,15 @@ function ForecastInner() {
             />
             <Stat label="Test MAE (best family)" value={Math.min(...data.models.map((m) => m.mae)).toFixed(1)} hint="vs held-out 26 weeks" />
           </div>
+          {data.nowcast && (
+            <div className="mt-4 rounded-3xl border border-line bg-white p-5 text-sm">
+              <div className="font-semibold">Reporting-delay nowcast (not a final count)</div>
+              <p className="mt-1">
+                Observed {data.nowcast.current.observed} · delay-adjusted {data.nowcast.current.nowcast} ({data.nowcast.current.low}–{data.nowcast.current.high}) · reporting assumed {Math.round(data.nowcast.current.completeness * 100)}% this week
+              </p>
+              <p className="mt-2 text-xs text-muted">{data.nowcast.caveat}</p>
+            </div>
+          )}
 
           <div className="mt-6 rounded-[28px] border border-line bg-white p-4 shadow-card md:p-6">
             <div className="mb-3 text-sm font-semibold">Observed history + ensemble interval</div>

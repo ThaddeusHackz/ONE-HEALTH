@@ -1,16 +1,27 @@
 import { NextResponse } from "next/server";
+import { DHIMS2_TEMPLATE, parseDhims2 } from "@/lib/dhims2";
 import { findOfficialSeries, getDB, recordAudit, saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
 export function GET(req: Request) {
   const url = new URL(req.url);
+  if (url.searchParams.get("template") === "1") {
+    return new NextResponse(DHIMS2_TEMPLATE, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=dhims2-template-ghana.csv",
+      },
+    });
+  }
   const diseaseId = url.searchParams.get("disease") || "";
   const regionId = url.searchParams.get("region") || "";
   if (diseaseId && regionId) {
     return NextResponse.json({ series: findOfficialSeries(diseaseId, regionId, url.searchParams.get("district") || undefined) });
   }
-  return NextResponse.json({ series: getDB().officialSeries.map(({ points, ...rest }) => ({ ...rest, weeks: points.length })) });
+  return NextResponse.json({
+    series: getDB().officialSeries.map(({ points, ...rest }) => ({ ...rest, weeks: points.length })),
+  });
 }
 
 export async function POST(req: Request) {
@@ -22,10 +33,25 @@ export async function POST(req: Request) {
     points?: { date: string; cases: number }[];
     csv?: string;
   };
-  const points = body.points?.length ? body.points : parseCsv(body.csv || "");
-  if (!body.diseaseId || !body.regionId || points.length < 8) {
-    return NextResponse.json({ error: "Need diseaseId, regionId and at least 8 weekly points (date,cases)." }, { status: 400 });
+
+  let points = body.points || [];
+  let quality = null;
+  if (!points.length && body.csv) {
+    const parsed = parseDhims2(body.csv);
+    points = parsed.points;
+    quality = parsed.quality;
+    if (!points.length) {
+      return NextResponse.json({ error: quality.warnings[0] || "Could not parse extract", quality }, { status: 400 });
+    }
   }
+
+  if (!body.diseaseId || !body.regionId || points.length < 8) {
+    return NextResponse.json(
+      { error: "Need diseaseId, regionId and at least 8 weekly points.", quality },
+      { status: 400 },
+    );
+  }
+
   const row = {
     id: uid("ser"),
     diseaseId: body.diseaseId,
@@ -42,19 +68,11 @@ export async function POST(req: Request) {
     db.officialSeries.unshift(row);
     db.officialSeries = db.officialSeries.slice(0, 80);
   });
-  recordAudit({ actor: "series", action: "official.upload", redactions: 0, detail: `${row.diseaseId}/${row.regionId} ${row.points.length} weeks` });
-  return NextResponse.json({ ok: true, weeks: row.points.length, id: row.id });
-}
-
-function parseCsv(csv: string) {
-  const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return [];
-  const header = lines[0].toLowerCase().split(/[,;\t]/).map((h) => h.trim());
-  const di = header.findIndex((h) => h.includes("date") || h.includes("week"));
-  const ci = header.findIndex((h) => h.includes("case") || h.includes("count") || h === "value");
-  if (di < 0 || ci < 0) return [];
-  return lines.slice(1).map((line) => {
-    const cols = line.split(/[,;\t]/);
-    return { date: cols[di]?.trim() || "", cases: Number(cols[ci]) || 0 };
-  }).filter((p) => p.date);
+  recordAudit({
+    actor: "series",
+    action: "official.upload",
+    redactions: 0,
+    detail: `${row.diseaseId}/${row.regionId} ${row.points.length} weeks completeness=${quality?.completeness ?? "n/a"}`,
+  });
+  return NextResponse.json({ ok: true, weeks: row.points.length, id: row.id, quality });
 }

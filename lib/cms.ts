@@ -43,6 +43,8 @@ export const DEFAULT_NAV: NavItem[] = [
   { href: "/intelligence", label: "Intelligence", visible: true },
   { href: "/vision", label: "Vision Lab", visible: true },
   { href: "/regions", label: "Regions", visible: true },
+  { href: "/extracts", label: "Extracts", visible: true },
+  { href: "/field", label: "Field brief", visible: true },
   { href: "/workbook", label: "Workbook", visible: true },
 ];
 

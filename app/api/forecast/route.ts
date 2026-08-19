@@ -4,6 +4,7 @@ import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
 import { districtById } from "@/lib/districts";
 import { findOfficialSeries, recordAudit, saveDB, uid } from "@/lib/store";
 import { languageInstruction } from "@/lib/languages";
+import { reportingNowcast } from "@/lib/nowcast";
 
 export const dynamic = "force-dynamic";
 
@@ -96,5 +97,6 @@ export async function POST(req: Request) {
     detail: `${bundle.disease.id}/${bundle.region.id} source=${bundle.diagnostics.source}`,
   });
 
-  return NextResponse.json({ ...bundle, briefing, briefingModel: model, districtId: body.districtId || null });
+  const nowcast = reportingNowcast(bundle.series.map((s) => ({ date: s.date, cases: s.cases })));
+  return NextResponse.json({ ...bundle, briefing, briefingModel: model, districtId: body.districtId || null, nowcast });
 }
