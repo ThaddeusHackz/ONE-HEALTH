@@ -1,6 +1,20 @@
 # Inventory — everything built on this branch
 
-This is the complete list of work from the ONE HEALTH GHANA session. All of it lives on `arena/01a01814-one-health`.
+This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a0189f-one-health`.
+
+## 2026-08-19 live-host forensic (this pass)
+
+- [x] Confirmed production `/api/health`: OpenRouter, Tavily, OpenWeather, ElevenLabs keys all **present**
+- [x] Confirmed production `/api/diagnostics`: OpenRouter **400** because `models[]` longer than 3
+- [x] Chunk OpenRouter fallback into groups of three; auto-slice oversized payloads
+- [x] ElevenLabs probe uses `/v1/voices` (restricted keys cannot read `/v1/user`)
+- [x] Blueprint no longer pins empty optional secrets (would wipe dashboard keys)
+- [x] Forecast scoreboard now evaluates walk-forward backtests against the hold-out
+- [x] Climate cities fetched in parallel
+- [x] Forecast button no longer says “Running…” for a local ensemble compute
+- [x] Workbook expanded to 21 modules: how every system was made
+- [x] Key-status pills on Forecast, Intelligence, Vision, Climate, Extracts, Field
+- [x] Env aliases for mistyped Render variable names
 
 ## Workbook and forensic
 

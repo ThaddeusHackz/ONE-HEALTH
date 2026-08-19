@@ -7,6 +7,7 @@ import { languageInstruction } from "@/lib/languages";
 import { reportingNowcast } from "@/lib/nowcast";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 function bundleFor(opts: { diseaseId: string; regionId: string; horizon?: number; districtId?: string }) {
   const official = findOfficialSeries(opts.diseaseId, opts.regionId, opts.districtId);

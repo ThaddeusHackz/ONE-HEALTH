@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 import { DISEASES, REGIONS } from "@/lib/ghana";
 import { FIELD_LANGUAGES } from "@/lib/languages";
 import { Mic, Search, Send, Volume2 } from "lucide-react";
@@ -136,12 +137,15 @@ export default function IntelligencePage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">OpenRouter intelligence</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Ask, speak, search — Ghana only</h1>
       <p className="mt-3 text-muted">
-        One server key. Models try in order: GPT-4.1 → Gemini 2.5 Pro → Claude → Flash → DeepSeek → Llama → Mistral. Quota on one provider does not kill the desk.
+        One server key. OpenRouter accepts at most three fallback slugs per request — the desk walks the full chain in groups of three (Flash / 4.1-mini / 4o-mini, then premium, then :free, then auto). Quota on one provider does not kill the desk.
       </p>
       <div className="mt-5">
         <Disclaimer compact />
       </div>
       {keyNote && <p className="mt-3 text-sm text-muted">{keyNote}</p>}
+      <div className="mt-3">
+        <KeyStatus compact />
+      </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
         <select className="rounded-full border border-line bg-white px-3 py-2 text-sm" value={diseaseId} onChange={(e) => setDiseaseId(e.target.value)}>

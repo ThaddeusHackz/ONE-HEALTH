@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { REGIONS } from "@/lib/ghana";
-import { DISTRICTS } from "@/lib/districts";
+import { DISTRICTS, districtsFor } from "@/lib/districts";
 
 export const metadata = { title: "Regions" };
 
@@ -14,15 +14,29 @@ export default function RegionsPage() {
       </p>
       <img src="/images/ghana-regions.png" alt="Ghana regions" className="mt-8 w-full rounded-[28px] border border-line bg-white shadow-card" />
       <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {REGIONS.map((r) => (
-          <Link key={r.id} href={`/forecast?region=${r.id}`} className="rounded-3xl border border-line bg-white p-5 shadow-card">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-teal">{r.zone} belt</div>
-            <div className="font-display mt-1 text-2xl">{r.name}</div>
-            <p className="mt-2 text-sm text-muted">
-              Capital {r.capital} · {(r.population / 1e6).toFixed(2)}M · {r.facilities} facilities
-            </p>
-          </Link>
-        ))}
+        {REGIONS.map((r) => {
+          const local = districtsFor(r.id);
+          return (
+            <div key={r.id} className="rounded-3xl border border-line bg-white p-5 shadow-card">
+              <Link href={`/forecast?region=${r.id}`} className="block">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-teal">{r.zone} belt</div>
+                <div className="font-display mt-1 text-2xl">{r.name}</div>
+                <p className="mt-2 text-sm text-muted">
+                  Capital {r.capital} · {(r.population / 1e6).toFixed(2)}M · {r.facilities} facilities
+                </p>
+              </Link>
+              <ul className="mt-3 space-y-1 text-xs text-muted">
+                {local.map((d) => (
+                  <li key={d.id}>
+                    <Link href={`/forecast?region=${r.id}&district=${d.id}`} className="hover:text-ghana-green">
+                      {d.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

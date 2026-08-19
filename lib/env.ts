@@ -10,29 +10,42 @@ function read(name: string): string {
   return value;
 }
 
+function first(...names: string[]): string {
+  for (const name of names) {
+    const value = read(name);
+    if (value) return value;
+  }
+  return "";
+}
+
 export function openRouterKey(): string {
-  return (
-    read("OPENROUTER_API_KEY") ||
-    read("OPEN_ROUTER_API_KEY") ||
-    read("OPENROUTER_KEY") ||
-    read("OR_API_KEY")
+  const direct = first(
+    "OPENROUTER_API_KEY",
+    "OPEN_ROUTER_API_KEY",
+    "OPENROUTER_KEY",
+    "OR_API_KEY",
+    "OPENROUTER",
   );
+  if (direct) return direct;
+  // Last-resort: some hosts put the sk-or key under an OpenAI-shaped name.
+  const openaiShaped = first("OPENAI_API_KEY", "OPENAI_KEY");
+  if (openaiShaped.startsWith("sk-or-")) return openaiShaped;
+  return "";
 }
 
 export function openRouterReferer(): string {
   return (
-    read("OPENROUTER_HTTP_REFERER") ||
-    read("NEXT_PUBLIC_SITE_URL") ||
+    first("OPENROUTER_HTTP_REFERER", "NEXT_PUBLIC_SITE_URL") ||
     "https://one-health-ghana.onrender.com"
   );
 }
 
 export function openRouterTitle(): string {
-  return read("OPENROUTER_APP_TITLE") || "ONE HEALTH GHANA";
+  return first("OPENROUTER_APP_TITLE") || "ONE HEALTH GHANA";
 }
 
 export function extraOpenRouterModels(): string[] {
-  const raw = read("OPENROUTER_MODELS");
+  const raw = first("OPENROUTER_MODELS", "OPENROUTER_MODEL");
   if (!raw) return [];
   return raw
     .split(/[,\n]/)
@@ -41,39 +54,44 @@ export function extraOpenRouterModels(): string[] {
 }
 
 export function tavilyKey(): string {
-  return read("TAVILY_API_KEY");
+  return first("TAVILY_API_KEY", "TAVILY_KEY", "SEARCH_API_KEY");
 }
 
 export function elevenLabsKey(): string {
-  return read("ELEVENLABS_API_KEY");
+  return first("ELEVENLABS_API_KEY", "ELEVEN_LABS_API_KEY", "ELEVENLABS_KEY", "XI_API_KEY");
 }
 
 export function elevenLabsVoice(): string {
-  return read("ELEVENLABS_VOICE_ID") || "21m00Tcm4TlvDq8ikWAM";
+  return first("ELEVENLABS_VOICE_ID", "ELEVEN_LABS_VOICE_ID") || "21m00Tcm4TlvDq8ikWAM";
 }
 
 export function openWeatherKey(): string {
-  return read("OPENWEATHER_API_KEY");
+  return first(
+    "OPENWEATHER_API_KEY",
+    "OPENWEATHERMAP_API_KEY",
+    "OPEN_WEATHER_API_KEY",
+    "WEATHER_API_KEY",
+  );
 }
 
 export function siteUrl(): string {
-  return read("NEXT_PUBLIC_SITE_URL") || "http://localhost:3000";
+  return first("NEXT_PUBLIC_SITE_URL") || "http://localhost:3000";
 }
 
 export function adminEmail(): string {
-  return (read("ADMIN_EMAIL") || "admin@ghs.gov.gh").toLowerCase();
+  return (first("ADMIN_EMAIL") || "admin@ghs.gov.gh").toLowerCase();
 }
 
 export function adminPassword(): string {
-  return read("ADMIN_PASSWORD") || "GhanaHealth2026!";
+  return first("ADMIN_PASSWORD") || "GhanaHealth2026!";
 }
 
 export function adminName(): string {
-  return read("ADMIN_NAME") || "GHS Administrator";
+  return first("ADMIN_NAME") || "GHS Administrator";
 }
 
 export function sessionSecret(): string {
-  return read("SESSION_SECRET") || openRouterKey() || "one-health-ghana-dev-secret";
+  return first("SESSION_SECRET") || openRouterKey() || "one-health-ghana-dev-secret";
 }
 
 export function maskKey(value: string): string {

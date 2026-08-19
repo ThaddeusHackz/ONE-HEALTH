@@ -400,23 +400,24 @@ function packModel(
   id: string,
   name: string,
   dates: string[],
-  point: number[],
+  future: number[],
+  backtest: number[],
   actual: number[],
   band = 0.22,
 ): ModelForecast {
-  const n = Math.min(point.length, actual.length);
+  const n = Math.min(backtest.length, actual.length);
   return {
     id,
     name,
     points: dates.map((date, i) => ({
       date,
-      point: Math.max(0, point[i] ?? 0),
-      low: Math.max(0, (point[i] ?? 0) * (1 - band)),
-      high: Math.max(0, (point[i] ?? 0) * (1 + band * 1.35)),
+      point: Math.max(0, future[i] ?? 0),
+      low: Math.max(0, (future[i] ?? 0) * (1 - band)),
+      high: Math.max(0, (future[i] ?? 0) * (1 + band * 1.35)),
     })),
-    mae: mae(actual.slice(0, n), point.slice(0, n)),
-    rmse: rmse(actual.slice(0, n), point.slice(0, n)),
-    smape: smape(actual.slice(0, n), point.slice(0, n)),
+    mae: mae(actual.slice(0, n), backtest.slice(0, n)),
+    rmse: rmse(actual.slice(0, n), backtest.slice(0, n)),
+    smape: smape(actual.slice(0, n), backtest.slice(0, n)),
   };
 }
 
@@ -500,18 +501,17 @@ export function runForecast(opts: {
   }
 
   const naiveFwd = Array(horizon).fill(values[values.length - 1]);
+  const naiveBack = testVals.map((_, i) => values[split + i - 1] ?? trainVals[trainVals.length - 1] ?? 0);
   const maFwd = movingAvg(values, horizon, 4);
   const holtFwd = holt(values, horizon);
   const snaiveFwd = seasonalNaive(values, horizon);
 
   const models: ModelForecast[] = [
-    packModel("naive", "Naive (last week)", fDates, naiveFwd, testVals, 0.28),
-    packModel("seasonal-naive", "Seasonal naive (52w)", fDates, snaiveFwd, snaiveBack, 0.3),
-    packModel("moving-avg", "4-week moving average", fDates, maFwd, maBack, 0.24),
-    packModel("holt", "Holt linear trend", fDates, holtFwd, holtBack, 0.26),
-    {
-      ...packModel("ridge", "Ridge (lag + calendar)", fDates, linFwd, linBack, 0.22),
-    },
+    packModel("naive", "Naive (last week)", fDates, naiveFwd, naiveBack, testVals, 0.28),
+    packModel("seasonal-naive", "Seasonal naive (52w)", fDates, snaiveFwd, snaiveBack, testVals, 0.3),
+    packModel("moving-avg", "4-week moving average", fDates, maFwd, maBack, testVals, 0.24),
+    packModel("holt", "Holt linear trend", fDates, holtFwd, holtBack, testVals, 0.26),
+    packModel("ridge", "Ridge (lag + calendar)", fDates, linFwd, linBack, testVals, 0.22),
     {
       id: "forest",
       name: "Random forest (leakage-safe)",
@@ -526,10 +526,6 @@ export function runForecast(opts: {
       smape: smape(testVals, rfBack),
     },
   ];
-
-  models[1].mae = mae(testVals, snaiveBack);
-  models[1].rmse = rmse(testVals, snaiveBack);
-  models[1].smape = smape(testVals, snaiveBack);
 
   const ranked = [...models].sort((a, b) => a.mae - b.mae);
   const top = ranked.slice(0, 3);

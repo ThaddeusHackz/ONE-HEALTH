@@ -42,6 +42,7 @@ export function GET() {
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
       freeModelFallback: true,
+      openrouterMaxModelsPerRequest: 3,
     },
     store,
     archive: archiveStats(),

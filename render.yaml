@@ -41,11 +41,14 @@ services:
         value: GHS Administrator
       - key: SESSION_SECRET
         sync: false
+      # Dashboard secrets — never pin empty strings here or a Blueprint apply wipes keys.
       - key: TAVILY_API_KEY
-        value: ""
+        sync: false
       - key: ELEVENLABS_API_KEY
-        value: ""
+        sync: false
       - key: ELEVENLABS_VOICE_ID
-        value: ""
+        sync: false
       - key: OPENWEATHER_API_KEY
-        value: ""
+        sync: false
+      - key: OPENROUTER_MODELS
+        sync: false

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { DISEASES, REGIONS } from "@/lib/ghana";
 import { FIELD_LANGUAGES } from "@/lib/languages";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 import { Markdown } from "@/components/Markdown";
 
 export default function FieldPage() {
@@ -63,6 +64,9 @@ export default function FieldPage() {
       </p>
       <div className="mt-5">
         <Disclaimer compact />
+      </div>
+      <div className="mt-3">
+        <KeyStatus compact />
       </div>
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         <select className="rounded-2xl border border-line bg-white px-3 py-3 text-sm" value={diseaseId} onChange={(e) => setDiseaseId(e.target.value)}>

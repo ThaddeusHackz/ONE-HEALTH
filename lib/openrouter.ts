@@ -1,13 +1,21 @@
 import { extraOpenRouterModels, openRouterKey, openRouterReferer, openRouterTitle } from "./env";
 import { GHANA_CONTEXT } from "./ghana";
 
-/** Paid + widely available slugs first. Invalid slugs are skipped per-model. */
+/**
+ * OpenRouter (2026) accepts at most THREE slugs in the request `models` array.
+ * A longer list returns HTTP 400: "'models' array must have 3 items or fewer."
+ * We therefore walk the full chain in groups of three.
+ */
+export const MAX_MODELS_PER_REQUEST = 3;
+
+/** Fast, widely available paid slugs first. Invalid slugs are skipped per group. */
 export const CHAT_MODELS = [
-  "openai/gpt-4.1",
-  "openai/gpt-4o",
   "openai/gpt-4.1-mini",
-  "google/gemini-2.5-pro",
   "google/gemini-2.5-flash",
+  "openai/gpt-4o-mini",
+  "openai/gpt-4.1",
+  "google/gemini-2.5-pro",
+  "openai/gpt-4o",
   "anthropic/claude-sonnet-4",
   "anthropic/claude-3.5-sonnet",
   "deepseek/deepseek-chat",
@@ -24,11 +32,12 @@ export const FREE_MODELS = [
 ];
 
 export const VISION_MODELS = [
+  "google/gemini-2.5-flash",
+  "openai/gpt-4o-mini",
   "google/gemini-2.5-pro",
   "openai/gpt-4.1",
   "openai/gpt-4o",
   "anthropic/claude-sonnet-4",
-  "google/gemini-2.5-flash",
   "anthropic/claude-3.5-sonnet",
   "qwen/qwen2.5-vl-72b-instruct:free",
   "google/gemma-3-27b-it:free",
@@ -82,6 +91,12 @@ function unique(models: string[]) {
   return out;
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 function modelChain(preferred?: string[]) {
   return unique([
     ...extraOpenRouterModels(),
@@ -118,9 +133,29 @@ function extractText(content: unknown): string {
   return "";
 }
 
-async function postChat(body: Record<string, unknown>, timeoutMs = 90000): Promise<ORResult> {
+function isFatalAuth(status: number, message: string) {
+  if (status === 401) return true;
+  return (
+    status === 403 &&
+    /invalid.?api.?key|unauthorized|user not found|no auth|missing authentication|cookie/i.test(message)
+  );
+}
+
+function isCreditError(status: number, message: string) {
+  return status === 402 || /402|credit|balance|payment required/i.test(message);
+}
+
+function isModelsLimitError(message: string) {
+  return /models['"]?\s+array must have 3 items or fewer|at most 3/i.test(message);
+}
+
+async function postChat(body: Record<string, unknown>, timeoutMs = 75000): Promise<ORResult> {
   const key = openRouterKey();
   if (!key) throw new RouterError("OPENROUTER_API_KEY is not set", 0);
+
+  if (Array.isArray(body.models) && body.models.length > MAX_MODELS_PER_REQUEST) {
+    body = { ...body, models: (body.models as string[]).slice(0, MAX_MODELS_PER_REQUEST) };
+  }
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -163,46 +198,52 @@ async function postChat(body: Record<string, unknown>, timeoutMs = 90000): Promi
   }
 }
 
-async function tryChain(
-  models: string[],
-  base: Record<string, unknown>,
-): Promise<ORResult> {
-  const tried: string[] = [];
-  const errors: string[] = [];
-
+async function tryGroup(group: string[], base: Record<string, unknown>): Promise<ORResult> {
+  const models = group.slice(0, MAX_MODELS_PER_REQUEST);
   try {
-    const bundled = await postChat({
+    return await postChat({
       ...base,
       model: models[0],
       models,
       provider: { allow_fallbacks: true, sort: "throughput" },
-      route: "fallback",
     });
-    bundled.tried = [bundled.model];
-    return bundled;
   } catch (err) {
-    errors.push(`bundle: ${(err as Error).message}`);
-  }
-
-  for (const model of models) {
-    tried.push(model);
-    try {
-      const r = await postChat({
+    const e = err as RouterError;
+    if (isModelsLimitError(e.message) && models.length > 1) {
+      return postChat({
         ...base,
-        model,
+        model: models[0],
+        models: models.slice(0, 1),
         provider: { allow_fallbacks: true },
       });
+    }
+    throw e;
+  }
+}
+
+async function tryChain(models: string[], base: Record<string, unknown>): Promise<ORResult> {
+  const tried: string[] = [];
+  const errors: string[] = [];
+
+  for (const group of chunk(models, MAX_MODELS_PER_REQUEST)) {
+    tried.push(...group);
+    try {
+      const r = await tryGroup(group, base);
       r.tried = tried;
       return r;
     } catch (err) {
       const e = err as RouterError;
-      errors.push(`${model}: ${e.message}`);
-      if (e.status === 401 || e.status === 403) {
+      errors.push(`${group.join(" → ")}: ${e.message}`);
+      if (isFatalAuth(e.status, e.message)) {
         lastError = errors.join(" | ");
         throw new RouterError(
           `OpenRouter rejected the API key (${e.message}). Check OPENROUTER_API_KEY on Render.`,
           e.status,
         );
+      }
+      if (isCreditError(e.status, e.message)) {
+        lastError = errors.join(" | ");
+        throw new RouterError(e.message, 402);
       }
     }
   }
@@ -229,8 +270,8 @@ export async function complete(opts: {
   try {
     return await tryChain(models, body);
   } catch (err) {
-    const msg = (err as Error).message || "";
-    if (/402|credit|balance|quota|payment/i.test(msg)) {
+    const e = err as RouterError;
+    if (isCreditError(e.status, e.message) || /402|credit|balance|quota|payment/i.test(e.message)) {
       return tryChain(unique([...FREE_MODELS, "openrouter/auto"]), body);
     }
     throw err;
@@ -281,4 +322,8 @@ export async function visionAnalyze(opts: {
       temperature: 0.2,
     });
   }
+}
+
+export function fallbackGroups(models = modelChain()) {
+  return chunk(models, MAX_MODELS_PER_REQUEST);
 }

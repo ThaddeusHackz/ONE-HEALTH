@@ -16,22 +16,25 @@ import {
 import { DISEASES, REGIONS } from "@/lib/ghana";
 import { districtsFor } from "@/lib/districts";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 import type { ForecastBundle } from "@/lib/forecast";
 
 function ForecastInner() {
   const params = useSearchParams();
   const [diseaseId, setDiseaseId] = useState(params.get("disease") || "malaria");
   const [regionId, setRegionId] = useState(params.get("region") || "national");
-  const [districtId, setDistrictId] = useState("");
+  const [districtId, setDistrictId] = useState(params.get("district") || "");
   const [horizon, setHorizon] = useState(4);
   const [data, setData] = useState<(ForecastBundle & { briefing?: string; briefingModel?: string; nowcast?: { current: { observed: number; nowcast: number; low: number; high: number; completeness: number }; caveat: string } }) | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [briefing, setBriefing] = useState(false);
   const [err, setErr] = useState("");
   const [seriesNote, setSeriesNote] = useState("");
   const localDistricts = districtsFor(regionId);
 
   async function load(brief = false) {
-    setLoading(true);
+    if (brief) setBriefing(true);
+    else setLoading(true);
     setErr("");
     try {
       const res = await fetch("/api/forecast", {
@@ -46,6 +49,7 @@ function ForecastInner() {
       setErr((e as Error).message);
     } finally {
       setLoading(false);
+      setBriefing(false);
     }
   }
 
@@ -148,6 +152,7 @@ function ForecastInner() {
         {seriesNote && <p className="mt-2 text-xs text-ghana-green">{seriesNote}</p>}
       </label>
       {err && <p className="mt-3 text-sm text-ghana-red">{err}</p>}
+      {loading && !data && <p className="mt-6 text-sm text-muted">Computing leakage-safe ensemble…</p>}
 
       {data && (
         <>
