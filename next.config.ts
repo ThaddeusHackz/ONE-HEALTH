@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: [],
+  serverExternalPackages: ["fflate"],
+  experimental: {
+    serverActions: { bodySizeLimit: "24mb" },
+  },
   async headers() {
     return [
       {

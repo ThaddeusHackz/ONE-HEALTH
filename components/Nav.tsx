@@ -4,35 +4,32 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-
-const LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/forecast", label: "Forecast" },
-  { href: "/surveillance", label: "Surveillance" },
-  { href: "/intelligence", label: "Intelligence" },
-  { href: "/vision", label: "Vision Lab" },
-  { href: "/regions", label: "Regions" },
-  { href: "/workbook", label: "Workbook" },
-];
+import { useSite } from "./SiteProvider";
 
 export function Nav() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const { content, nav } = useSite();
+  if (path.startsWith("/admin")) return null;
+  const links = nav.filter((l) => l.visible);
 
   return (
     <header className="sticky top-0 z-50">
       <div className="flag-bar h-1 w-full" />
+      {content.announcementOn && content.announcement && (
+        <div className="bg-green-soft px-4 py-2 text-center text-xs text-ink md:text-sm">{content.announcement}</div>
+      )}
       <div className="glass">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/images/logo.png" alt="ONE HEALTH GHANA" className="h-10 w-10 rounded-xl object-cover ring-1 ring-line" />
+            <img src="/images/logo.png" alt={content.brandName} className="h-10 w-10 rounded-xl object-cover ring-1 ring-line" />
             <div className="leading-tight">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ghana-green">Ghana Health Service</div>
-              <div className="font-display text-lg tracking-tight">ONE HEALTH</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ghana-green">{content.brandEyebrow}</div>
+              <div className="font-display text-lg tracking-tight">{content.brandName}</div>
             </div>
           </Link>
           <nav className="hidden items-center gap-1 lg:flex">
-            {LINKS.map((l) => {
+            {links.map((l) => {
               const active = path === l.href;
               return (
                 <Link
@@ -53,7 +50,7 @@ export function Nav() {
         </div>
         {open && (
           <div className="border-t border-line px-4 py-3 lg:hidden">
-            {LINKS.map((l) => (
+            {links.map((l) => (
               <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="block py-2 text-sm">
                 {l.label}
               </Link>

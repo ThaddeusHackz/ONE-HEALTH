@@ -37,3 +37,25 @@ export function openWeatherKey(): string {
 export function siteUrl(): string {
   return read("NEXT_PUBLIC_SITE_URL") || "http://localhost:3000";
 }
+
+export function adminEmail(): string {
+  return (read("ADMIN_EMAIL") || "admin@ghs.gov.gh").toLowerCase();
+}
+
+export function adminPassword(): string {
+  return read("ADMIN_PASSWORD") || "GhanaHealth2026!";
+}
+
+export function adminName(): string {
+  return read("ADMIN_NAME") || "GHS Administrator";
+}
+
+export function sessionSecret(): string {
+  return read("SESSION_SECRET") || openRouterKey() || "one-health-ghana-dev-secret";
+}
+
+export function maskKey(value: string): string {
+  if (!value) return "not set";
+  if (value.length < 12) return "set ·••••";
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}

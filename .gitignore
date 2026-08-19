@@ -11,6 +11,7 @@ dist
 __pycache__
 .idea
 .vscode
+data/*.json
 data/uploads
 coverage
 tsconfig.tsbuildinfo

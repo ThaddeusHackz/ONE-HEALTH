@@ -27,12 +27,12 @@ export const FAST_MODELS = [
   "meta-llama/llama-4-maverick",
 ];
 
-export type ChatContent =
-  | string
-  | Array<
-      | { type: "text"; text: string }
-      | { type: "image_url"; image_url: { url: string } }
-    >;
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+
+export type ChatContent = string | ContentPart[];
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -145,14 +145,16 @@ export async function completeWithSystem(opts: {
 export async function visionAnalyze(opts: {
   prompt: string;
   images: string[];
+  files?: { filename: string; file_data: string }[];
   extraSystem?: string;
 }): Promise<ORResult> {
-  const parts: NonNullable<Extract<ChatContent, unknown[]>> = [
+  const parts: ContentPart[] = [
     { type: "text", text: opts.prompt },
     ...opts.images.map((url) => ({
       type: "image_url" as const,
       image_url: { url },
     })),
+    ...(opts.files || []).map((file) => ({ type: "file" as const, file })),
   ];
   return completeWithSystem({
     user: parts,

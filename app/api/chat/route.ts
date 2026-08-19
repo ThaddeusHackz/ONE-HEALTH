@@ -3,6 +3,7 @@ import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrout
 import { formatHits, webSearch } from "@/lib/search";
 import { GHANA_CONTEXT } from "@/lib/ghana";
 import { runForecast } from "@/lib/forecast";
+import { saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,10 @@ export async function POST(req: Request) {
   const last = [...history].reverse().find((m) => m.role === "user")?.content || "";
 
   if (!openRouterConfigured()) {
+    const text = offlineAnswer(last);
+    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge");
     return NextResponse.json({
-      text: offlineAnswer(last),
+      text,
       model: "offline-ghana-knowledge",
       citations: [],
     });
@@ -66,13 +69,24 @@ ${searchBlock}${forecastBlock}`,
 
   try {
     const result = await complete({ messages, temperature: 0.35, maxTokens: 1800 });
+    persistChat([...history, { role: "assistant", content: result.text }], result.model);
     return NextResponse.json({ text: result.text, model: result.model, citations });
   } catch (err) {
+    const text = offlineAnswer(last);
+    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge");
     return NextResponse.json(
-      { error: (err as Error).message, text: offlineAnswer(last), model: "offline-ghana-knowledge" },
+      { error: (err as Error).message, text, model: "offline-ghana-knowledge" },
       { status: 200 },
     );
   }
+}
+
+function persistChat(messages: { role: string; content: string }[], model: string) {
+  const title = messages.find((m) => m.role === "user")?.content.slice(0, 80) || "Conversation";
+  saveDB((db) => {
+    db.chats.unshift({ id: uid("chat"), title, messages, model, createdAt: new Date().toISOString() });
+    db.chats = db.chats.slice(0, 200);
+  });
 }
 
 function offlineAnswer(q: string): string {

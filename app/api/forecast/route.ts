@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,20 @@ export async function POST(req: Request) {
       model = `local-fallback: ${(err as Error).message}`;
     }
   }
+
+  saveDB((db) => {
+    db.forecasts.unshift({
+      id: uid("fc"),
+      diseaseId: bundle.disease.id,
+      regionId: bundle.region.id,
+      latest: bundle.diagnostics.latest,
+      nextWeek: bundle.ensemble.points[0]?.point || 0,
+      z: bundle.diagnostics.latestZ,
+      summary: briefing || bundle.narrative.nowcast,
+      createdAt: new Date().toISOString(),
+    });
+    db.forecasts = db.forecasts.slice(0, 200);
+  });
 
   return NextResponse.json({ ...bundle, briefing, briefingModel: model });
 }

@@ -26,3 +26,11 @@ services:
         sync: false
       - key: OPENWEATHER_API_KEY
         sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_NAME
+        sync: false
+      - key: SESSION_SECRET
+        sync: false

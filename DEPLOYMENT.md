@@ -43,9 +43,15 @@ TAVILY_API_KEY=            # optional
 ELEVENLABS_API_KEY=        # optional
 ELEVENLABS_VOICE_ID=       # optional
 OPENWEATHER_API_KEY=       # optional
+ADMIN_EMAIL=admin@ghs.gov.gh
+ADMIN_PASSWORD=            # strong password for /admin
+ADMIN_NAME=GHS Administrator
+SESSION_SECRET=            # long random string
 ```
 
 Save. Render redeploys.
+
+CMS login is `/admin` (default local: `admin@ghs.gov.gh` / the password you set). Never commit those values.
 
 ## 3. First-run checklist
 
