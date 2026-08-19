@@ -47,7 +47,8 @@ Optional keys default to empty so **Apply is not blocked**.
 | Admin CMS | **Yes** | Login with `ADMIN_*` |
 | Signed audit download | **Yes** | HMAC with `SESSION_SECRET` |
 | Event log JSONL | **Yes, until sleep/redeploy** | Lost on free/ephemeral disk |
-| 89-year archive | **Only with `DATABASE_URL` + backups** | Not automatic on paid web-only |
+| 89-year archive | **Blueprint now attaches free Postgres** | Snapshot + events restore after web sleep. Free DB may expire — upgrade to keep it. |
+| AI when paid credit is empty | **Tries `:free` OpenRouter models** | Still needs a valid key. Daily free-tier rate limits apply. |
 
 ## C. What I will not claim
 

@@ -38,6 +38,7 @@ export function GET() {
       search: Boolean(tavilyKey()),
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
+      freeModelFallback: true,
     },
     store,
     archive: archiveStats(),

@@ -1,5 +1,11 @@
-# Blueprint: one Node web service. Optional keys have empty defaults so Apply is not blocked.
-# Required to type in the dashboard: OPENROUTER_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
+# Blueprint: free web + free Postgres so history survives web restarts.
+# Required dashboard secrets: OPENROUTER_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
+
+databases:
+  - name: one-health-db
+    plan: free
+    databaseName: onehealth
+    user: onehealth
 
 services:
   - type: web
@@ -17,6 +23,10 @@ services:
         value: "22.12.0"
       - key: OPENROUTER_APP_TITLE
         value: ONE HEALTH GHANA
+      - key: DATABASE_URL
+        fromDatabase:
+          name: one-health-db
+          property: connectionString
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
       - key: OPENROUTER_API_KEY
@@ -38,6 +48,4 @@ services:
       - key: ELEVENLABS_VOICE_ID
         value: ""
       - key: OPENWEATHER_API_KEY
-        value: ""
-      - key: DATABASE_URL
         value: ""

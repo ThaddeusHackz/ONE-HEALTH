@@ -47,7 +47,7 @@ ADMIN_EMAIL=admin@ghs.gov.gh
 ADMIN_PASSWORD=            # strong password for /admin
 ADMIN_NAME=GHS Administrator
 SESSION_SECRET=            # long random string
-DATABASE_URL=              # optional paid Postgres — only path that keeps events across restarts
+DATABASE_URL=              # set automatically by the blueprint Postgres. Keeps CMS/extracts/chats across web restarts.
 ```
 
 Save. Render redeploys.

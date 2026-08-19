@@ -1,6 +1,13 @@
 import { openRouterKey, openRouterReferer, openRouterTitle } from "./env";
 import { GHANA_CONTEXT } from "./ghana";
 
+export const FREE_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "google/gemma-3-27b-it:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+];
+
 export const CHAT_MODELS = [
   "openai/gpt-4.1",
   "google/gemini-2.5-pro",
@@ -10,6 +17,7 @@ export const CHAT_MODELS = [
   "deepseek/deepseek-chat-v3-0324",
   "meta-llama/llama-4-maverick",
   "mistralai/mistral-large-2411",
+  ...FREE_MODELS,
 ];
 
 export const VISION_MODELS = [
@@ -18,6 +26,8 @@ export const VISION_MODELS = [
   "anthropic/claude-sonnet-4",
   "google/gemini-2.5-flash",
   "anthropic/claude-3.7-sonnet",
+  "qwen/qwen2.5-vl-72b-instruct:free",
+  "google/gemma-3-27b-it:free",
 ];
 
 export const FAST_MODELS = [
@@ -25,6 +35,7 @@ export const FAST_MODELS = [
   "openai/gpt-4.1-mini",
   "deepseek/deepseek-chat-v3-0324",
   "meta-llama/llama-4-maverick",
+  ...FREE_MODELS,
 ];
 
 export type ContentPart =
@@ -116,7 +127,7 @@ export async function complete(opts: {
   json?: boolean;
 }): Promise<ORResult> {
   const models = opts.models?.length ? opts.models : CHAT_MODELS;
-  return postChat({
+  const body = {
     model: models[0],
     models,
     provider: { allow_fallbacks: true, sort: "throughput" },
@@ -124,7 +135,16 @@ export async function complete(opts: {
     max_tokens: opts.maxTokens ?? 2200,
     messages: opts.messages,
     ...(opts.json ? { response_format: { type: "json_object" } } : {}),
-  });
+  };
+  try {
+    return await postChat(body);
+  } catch (err) {
+    const msg = (err as Error).message || "";
+    if (/402|credit|balance|quota|payment/i.test(msg)) {
+      return postChat({ ...body, model: FREE_MODELS[0], models: FREE_MODELS });
+    }
+    throw err;
+  }
 }
 
 export async function completeWithSystem(opts: {

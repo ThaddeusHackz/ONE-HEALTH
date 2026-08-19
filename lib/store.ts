@@ -4,6 +4,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { adminEmail, adminName, adminPassword } from "./env";
 import { DEFAULT_CONTENT, DEFAULT_KNOWLEDGE, DEFAULT_NAV, type NavItem, type SiteContent } from "./cms";
 import { appendEvent } from "./archive";
+import { loadPgSnapshot, savePgSnapshot } from "./pg-store";
 import type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
 
 export type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
@@ -91,7 +92,6 @@ function load(): Database {
     console.error("[store] load failed", (err as Error).message);
   }
   cache = emptyDb();
-  persist(cache);
   return cache;
 }
 
@@ -108,6 +108,28 @@ function persist(db: Database) {
     writeFileSync(DB_PATH, JSON.stringify(db));
   } catch (err) {
     console.error("[store] persist degraded to memory:", (err as Error).message);
+  }
+  void savePgSnapshot(db as unknown as Record<string, unknown>);
+}
+
+export async function hydrateFromPostgres() {
+  try {
+    if (existsSync(DB_PATH)) return;
+    const raw = await loadPgSnapshot();
+    if (!raw || typeof raw !== "object") return;
+    const body = raw as unknown as Database;
+    cache = {
+      ...emptyDb(),
+      ...body,
+      content: { ...DEFAULT_CONTENT, ...(body.content || {}) },
+      nav: mergeNav(body.nav),
+      officialSeries: body.officialSeries || [],
+      audits: body.audits || [],
+      admins: body.admins?.length ? body.admins : [seedAdmin()],
+    };
+    console.info("[store] hydrated snapshot from Postgres");
+  } catch (err) {
+    console.error("[store] hydrate", (err as Error).message);
   }
 }
 
