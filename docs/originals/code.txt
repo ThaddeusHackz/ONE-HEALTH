@@ -1,0 +1,453 @@
+Here is the complete source code for the **ONE HEALTH PANDEMIC AND DISEASE OUTBREAK FORECASTING** Companion Notebook.
+
+You can copy and paste each block below into separate cells in **Google Colab** to reconstruct the working workbook described in your PDF document.
+
+```python
+# =============================================================================
+# MODULE 0: SETUP AND ENVIRONMENT
+# =============================================================================
+# This cell installs any missing packages and imports required libraries.
+# Run this cell first.
+# =============================================================================
+
+!pip install pandas numpy matplotlib seaborn scikit-learn statsmodels -q
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller, acf, pacf
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.model_selection import TimeSeriesSplit
+
+# Set plot style
+sns.set_style("whitegrid")
+
+print("Environment Ready.")
+```
+
+```markdown
+# MODULE 1 — Introduction to One Health and Pandemic Forecasting
+### Concept
+**One Health** recognizes that human, animal, and environmental health are interconnected — most emerging infectious diseases (Ebola, avian influenza, COVID-19) originate at that interface.
+
+**Surveillance** is the continuous collection and analysis of health data to detect abnormal patterns. An **outbreak** is a localized increase in cases above what is expected; an **epidemic** is a wider increase across a region; a **pandemic** is a global epidemic. **Forecasting** estimates future case counts from historical patterns; **early warning** flags when observed activity deviates enough from the expected baseline to warrant investigation.
+```
+
+```markdown
+# MODULE 2 — Framing the Epidemiological Problem
+### Problem Statement Definition
+
+Before writing code, we define the problem formally:
+
+| Element | Definition |
+| :--- | :--- |
+| **Target variable** | new_cases (weekly reported cases) |
+| **Predictors** | lagged case counts, rolling averages, calendar features |
+| **Prediction horizon** | 4 weeks ahead |
+| **Unit of analysis** | country-week |
+| **Geographic scope** | One country at a time (start simple) |
+| **Temporal resolution** | weekly (aggregated from daily reports) |
+| **Success criterion** | forecast error meaningfully lower than a naive baseline |
+```
+
+```python
+# =============================================================================
+# MODULE 4 — Understanding and Ingesting the Dataset
+# =============================================================================
+
+url = "https://covid.ourworldindata.org/data/owid-covid-data.csv"
+
+# Load data with specific columns to save memory
+df = pd.read_csv(url, usecols=["location", "date", "new_cases", "new_deaths", "population"])
+
+# Convert date column to datetime objects
+df["date"] = pd.to_datetime(df["date"])
+
+# --- CONFIGURATION ---
+# Change 'South Africa' to the country you wish to study
+country = "South Africa"
+
+# Filter for the specific country
+df = df[df["location"] == country].sort_values("date").reset_index(drop=True)
+
+# --- INITIAL INSPECTION ---
+print(f"Shape: {df.shape}")
+print(f"Data Types:\n{df.dtypes}")
+print(f"Head:\n{df.head()}")
+print(f"Missing Values:\n{df.isna().sum()}")
+print(f"Duplicated Dates: {df.duplicated(subset='date').sum()}")
+
+# Note: Expect some missing values in new_cases/new_deaths especially early in pandemic
+```
+
+```python
+# =============================================================================
+# MODULE 5 — Data Cleaning and Preprocessing
+# =============================================================================
+
+# 1. Handle negative case counts (retrospective corrections)
+# Clip negatives to 0. Do not drop them automatically; investigate first.
+df["new_cases"] = df["new_cases"].clip(lower=0)
+
+# 2. Resample to Weekly Totals
+# This smooths day-of-week reporting artifacts (e.g., weekend under-reporting)
+# We create a copy to work with a clean index
+weekly = (
+    df.set_index("date")[["new_cases"]]
+    .resample("W")          # 'W' stands for Week (Sun-Sat)
+    .sum()
+    .reset_index()
+    .rename(columns={"new_cases": "weekly_cases"})
+)
+
+# 3. Interpolate short internal gaps (do NOT interpolate large gaps)
+# limit=2 fills gaps of max 2 weeks. 
+# Larger gaps will remain NaN and be flagged.
+weekly["weekly_cases"] = weekly["weekly_cases"].interpolate(
+    method='linear', limit=2, limit_direction="both"
+)
+
+# 4. Flag remaining missing weeks rather than silently filling them
+weekly["is_imputed_gap"] = weekly["weekly_cases"].isna()
+
+print("Weekly Resampled Data Head:")
+print(weekly.head())
+print("\nMissing values remaining:")
+print(weekly.isnull().sum())
+```
+
+```python
+# =============================================================================
+# MODULE 6 — Exploratory Data Analysis (EDA)
+# =============================================================================
+
+fig, ax = plt.subplots(figsize=(12, 5))
+
+# Plot Raw Weekly Cases
+ax.plot(weekly["date"], weekly["weekly_cases"], label="Weekly cases", alpha=0.6)
+
+# Plot 4-Week Rolling Mean to see trend
+ax.plot(
+    weekly["date"], 
+    weekly["weekly_cases"].rolling(4).mean(), 
+    label="4-week rolling mean", 
+    color="black", 
+    linewidth=2
+)
+
+ax.set_title(f"Weekly Reported Cases – {country}")
+ax.set_xlabel("Date")
+ax.set_ylabel("Cases")
+ax.legend()
+plt.show()
+```
+
+```python
+# =============================================================================
+# MODULE 7 — Time-Series Analysis Fundamentals
+# =============================================================================
+
+# Prepare series (drop NaNs for decomposition)
+series = weekly.set_index("date")["weekly_cases"].dropna()
+
+# 1. Decomposition (Trend + Seasonal + Residual)
+# Period=52 assumes yearly seasonality in weekly data
+decomposition = seasonal_decompose(series, model='additive', period=52)
+decomposition.plot()
+plt.show()
+
+# 2. Stationarity Test (Augmented Dickey-Fuller)
+adf_result = adfuller(series)
+print(f"ADF Statistic: {adf_result[0]:.3f}")
+print(f"P-value: {adf_result[1]:.3f}")
+
+if adf_result[1] < 0.05:
+    print("Result: Reject non-stationarity (Series is likely stationary)")
+else:
+    print("Result: Series is likely non-stationary (has trend/unit root)")
+
+# 3. Autocorrelation (ACF / PACF)
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+plot_acf(series, lags=52, ax=axes[0])
+plot_pacf(series, lags=20, ax=axes[1])
+plt.show()
+```
+
+```python
+# =============================================================================
+# MODULE 8 — Baseline Forecasting Models
+# =============================================================================
+
+s = weekly["weekly_cases"]
+
+# Create Baseline DataFrame to hold predictions
+baseline_df = pd.DataFrame({
+    "actual": s,
+})
+
+# Baseline 1: Naive (Next week = This week)
+baseline_df["naive"] = s.shift(1)
+
+# Baseline 2: Seasonal Naive (Next week = Same week last year [52 weeks ago])
+baseline_df["seasonal_naive"] = s.shift(52)
+
+# Baseline 3: Moving Average (Next week = Avg of last 4 weeks)
+baseline_df["moving_avg"] = s.rolling(4).mean().shift(1)
+
+print(baseline_df.tail(10))
+```
+
+```python
+# =============================================================================
+# MODULE 9 — Chronological Train / Validation / Test Design
+# =============================================================================
+
+# WARNING: Do NOT use random splitting (train_test_split) for time series!
+# It causes temporal leakage (looking into the future).
+
+# Define cutoff points
+train_end = "2022-01-01"
+val_start = "2022-01-01"
+test_start = "2023-01-01"
+
+# Split DataFrames
+train = weekly[weekly["date"] < train_end].copy()
+val = weekly[(weekly["date"] >= val_start) & (weekly["date"] < test_start)].copy()
+test = weekly[weekly["date"] >= test_start].copy()
+
+# Also need a combined train+val set for final model training before testing
+train_val = weekly[weekly["date"] < test_start].copy()
+
+print(f"Train Size: {len(train)}")
+print(f"Val Size:   {len(val)}")
+print(f"Test Size:  {len(test)}")
+```
+
+```python
+# =============================================================================
+# MODULE 10 — Feature Engineering
+# =============================================================================
+
+fe = weekly.copy()
+
+# 1. Lag Features (Past 1, 2, 3, 4 weeks)
+for lag in [1, 2, 3, 4]:
+    fe[f"lag_{lag}"] = fe["weekly_cases"].shift(lag)
+
+# 2. Rolling Statistics (Mean, Std over 4 weeks)
+# CRITICAL: Shift(1) is used to avoid data leakage (using current week to predict current week)
+fe["rolling_mean_4"] = fe["weekly_cases"].shift(1).rolling(4).mean()
+fe["rolling_std_4"] = fe["weekly_cases"].shift(1).rolling(4).std()
+
+# 3. Calendar Features
+fe["week_of_year"] = fe["date"].dt.isocalendar().week.astype(int)
+fe["month"] = fe["date"].dt.month
+
+# Drop rows containing NaN generated by lags/rollings
+fe = fe.dropna().reset_index(drop=True)
+
+print("Feature Engineered Dataset:")
+print(fe.head())
+```
+
+```python
+# =============================================================================
+# MODULE 12 — MODEL TRAINING (Part A: Random Forest)
+# =============================================================================
+
+# Define feature columns (excluding target 'weekly_cases' and metadata)
+feature_cols = [
+    "lag_1", "lag_2", "lag_3", "lag_4", 
+    "rolling_mean_4", "rolling_std_4", 
+    "week_of_year", "month"
+]
+
+# Split data into X (features) and y (target)
+X_train = train[train["date"].isin(fe["date"])][feature_cols]
+y_train = train.merge(fe, on=["date","weekly_cases"], how="inner")["weekly_cases"] # simplistic merge for demo
+
+# Better alignment strategy:
+data_for_model = fe[fe["date"].isin(weekly["date"])].dropna() # robust align
+
+# Re-split based on the cleaned feature-engineered dataframe
+train_fe = data_for_model[data_for_model["date"] < train_end].copy()
+val_fe = data_for_model[(data_for_model["date"] >= val_start) & (data_for_model["date"] < test_start)].copy()
+test_fe = data_for_model[data_for_model["date"] >= test_start].copy()
+
+X_train, y_train = train_fe[feature_cols], train_fe["weekly_cases"]
+X_val, y_val = val_fe[feature_cols], val_fe["weekly_cases"]
+X_test, y_test = test_fe[feature_cols], test_fe["weekly_cases"]
+
+# Initialize and Fit Random Forest
+rf = RandomForestRegressor(n_estimators=300, random_state=42)
+rf.fit(X_train, y_train)
+
+# Generate Predictions
+rf_preds = rf.predict(X_test)
+```
+
+```python
+# =============================================================================
+# MODULE 12 — MODEL TRAINING (Part B: SARIMA)
+# =============================================================================
+
+# SARIMA works on the raw series index, not the feature matrix
+# Prepare series
+sarima_series = weekly.set_index("date")["weekly_cases"]
+
+# Define Model
+# Order(p,d,q)=(1,1,1), Seasonal Order(P,D,Q,S)=(1,1,1,52)
+# enforce_stationarity/invertibility=False handles potential math issues in short data
+sarima_model = SARIMAX(
+    sarima_series,
+    order=(1, 1, 1),
+    seasonal_order=(1, 1, 1, 52),
+    enforce_stationarity=False,
+    enforce_invertibility=False
+)
+
+# Fit
+sarima_fit = sarima_model.fit(disp=False) # disp=False suppresses verbose output
+
+# Forecast length of test set
+forecast_steps = len(test)
+sarima_forecast_obj = sarima_fit.get_forecast(steps=forecast_steps)
+sarima_preds = sarima_forecast_obj.predicted_mean
+sarima_ci = sarima_forecast_obj.conf_int()
+```
+
+```python
+# =============================================================================
+# MODULE 13 — Model Evaluation
+# =============================================================================
+
+def evaluate(y_true, y_pred, label):
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    
+    # Symmetric MAPE (handles zero/near-zero cases better)
+    smape = 100 * np.mean(2 * np.abs(y_pred - y_true) / (np.abs(y_true) + np.abs(y_pred)))
+    
+    print(f"{label:15s} | MAE={mae:.1f} | RMSE={rmse:.1f} | sMAPE={smape:.2f}%")
+    return {"label": label, "MAE": mae, "RMSE": rmse, "sMAPE": smape}
+
+# Reset indices to ensure alignment for evaluation
+y_test_reset = y_test.reset_index(drop=True)
+rf_preds_s = pd.Series(rf_preds).reset_index(drop=True)
+sarima_preds_s = sarima_preds.reset_index(drop=True)
+
+# Evaluate All Models
+evaluate(y_test_reset, baseline_df.loc[y_test.index, "moving_avg"], "Moving Avg Baseline")
+evaluate(y_test_reset, rf_preds_s, "Random Forest")
+evaluate(y_test_reset, sarima_preds_s, "SARIMA")
+```
+
+```python
+# =============================================================================
+# MODULE 14 — Uncertainty and Forecast Intervals
+# =============================================================================
+
+# SARIMA already provides Confidence Intervals natively (calculated in previous step)
+print("SARIMA 95% CI Sample:")
+print(sarima_ci.head())
+
+# --- RANDOM FOREST UNCERTAINTY APPROXIMATION ---
+# Aggregate predictions from individual trees to estimate spread
+tree_preds = np.stack([tree.predict(X_test) for tree in rf.estimators_])
+
+lower = np.percentile(tree_preds, 5, axis=0)
+upper = np.percentile(tree_preds, 95, axis=0)
+
+# Plot RF uncertainty
+plt.figure(figsize=(10, 5))
+plt.plot(y_test.values, label='Actual', color='black')
+plt.plot(rf_preds, label='RF Prediction', color='red')
+plt.fill_between(range(len(rf_preds)), lower, upper, color='red', alpha=0.2, label='90% Interval')
+plt.title("Random Forest Prediction with Uncertainty Interval")
+plt.legend()
+plt.show()
+```
+
+```python
+# =============================================================================
+# MODULE 15 — Outbreak Detection and Early Warning
+# =============================================================================
+
+# Use Training data to establish baseline statistics
+# Rolling 8-week window to calculate expected range
+baseline_mean = train["weekly_cases"].rolling(8).mean()
+baseline_std = train["weekly_cases"].rolling(8).std()
+
+# Align baseline to full series for calculation
+# (Reindex to match weekly index)
+weekly_analysis = weekly.copy()
+weekly_analysis["baseline_mean"] = baseline_mean.reindex(weekly_analysis.index)
+weekly_analysis["baseline_std"] = baseline_std.reindex(weekly_analysis.index)
+
+# Fill forward any NaNs introduced by rolling start
+weekly_analysis[["baseline_mean", "baseline_std"]] = weekly_analysis[["baseline_mean", "baseline_std"]].fillna(method="ffill")
+
+# Calculate Z-Score: How many standard deviations is current value from baseline?
+weekly_analysis["z_score"] = (
+    (weekly_analysis["weekly_cases"] - weekly_analysis["baseline_mean"]) 
+    / weekly_analysis["baseline_std"]
+)
+
+# Alert Logic: Flag if Z > 2 (More than 2 standard deviations above normal)
+threshold = 2
+weekly_analysis["alert"] = weekly_analysis["z_score"] > threshold
+
+# Display alerts triggered in Test set
+alerts_triggered = weekly_analysis[(weekly_analysis["date"] >= test_start) & (weekly_analysis["alert"])]
+print(f"Alerts Triggered ({len(alerts_triggered)} instances):")
+print(alerts [["date", "weekly_cases", "z_score"]].head())
+
+# Visualize Alerts
+plt.figure(figsize=(12,5))
+plt.plot(weekly_analysis["date"], weekly_analysis["weekly_cases"], label="Cases", alpha=0.5)
+scatter = plt.scatter(
+    weekly_analysis.loc[weekly_analysis["alert"], "date"], 
+    weekly_analysis.loc[weekly_analysis["alert"], "weekly_cases"], 
+    color="red", label="Alert Triggered"
+)
+plt.title("Early Warning System Signals (Threshold > 2 Std Dev)")
+plt.legend()
+plt.show()
+```
+
+```python
+# =============================================================================
+# MODULE 16 — Interpreting the Model
+# =============================================================================
+
+importances = pd.Series(rf.feature_importances_, index=feature_cols).sort_values(ascending=True)
+
+plt.figure(figsize=(8,4))
+importances.plot(kind="barh", color="skyblue")
+plt.title("Feature Importance (Random Forest)")
+plt.xlabel("Importance Score")
+plt.show()
+
+print(importances)
+```
+
+```markdown
+# APPENDIX A — AI-Assistance Log Template
+### Copy this table into a Markdown cell to track your progress and Gemini interactions.
+
+| Date | Task | Gemini Prompt (summary) | Response Used? | What Was Changed? | How Was It Validated? |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| | | | | | |
+| | | | | | |
+
+---
+**Note:** Remember that **Feature Importance != Causation**. 
+If `lag_1` ranks highest, it simply means last week's count is the best statistical predictor of next week's count. It does not imply causality.
+```

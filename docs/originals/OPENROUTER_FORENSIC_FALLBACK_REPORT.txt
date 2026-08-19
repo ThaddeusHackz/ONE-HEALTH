@@ -1,0 +1,280 @@
+# 🔬 OPENROUTER FORENSIC SCAN REPORT
+## Automatic Provider Fallback & Rotation — Full Investigation
+### Date: 2026-08-18 | Status: ✅ CONFIRMED POSSIBLE
+
+---
+
+## 🎯 THE SHORT ANSWER
+
+**YES — OpenRouter absolutely supports exactly what you described.**
+With ONE OpenRouter API key, you can configure automatic fallback chains like:
+
+> OpenAI (quota finished) → Gemini (quota finished) → Claude (quota finished) → Mistral → DeepSeek → Llama → ... → back to OpenAI when quota resets
+
+This is **built into OpenRouter's core architecture**. You do NOT need multiple API keys. One `sk-or-...` key does it all.
+
+---
+
+## 📋 HOW IT WORKS — TWO LAYERS OF FALLBACK
+
+### LAYER 1: Model-Level Fallback (Cross-Provider)
+This is the PRIMARY feature you're asking about. You pass a `models` array in priority order.
+
+**Example Request:**
+```python
+import requests
+
+response = requests.post(
+    url="https://openrouter.ai/api/v1/chat/completions",
+    headers={
+        "Authorization": "Bearer sk-or-YOUR_SINGLE_KEY",
+        "Content-Type": "application/json"
+    },
+    json={
+        "models": [
+            "openai/gpt-4.1",              # Try OpenAI first
+            "google/gemini-2.5-pro",       # If OpenAI fails → Gemini
+            "anthropic/claude-sonnet-4-6", # If Gemini fails → Claude
+            "meta-llama/llama-4-maverick", # If Claude fails → Llama
+            "deepseek/deepseek-v3.2",     # If Llama fails → DeepSeek
+            "mistralai/mistral-large-2407" # If all else fails → Mistral
+        ],
+        "messages": [
+            {"role": "user", "content": "Hello"}
+        ]
+    }
+)
+```
+
+**What triggers fallback:**
+- ✅ Rate limiting (429 errors) — including quota exhaustion
+- ✅ Provider downtime (5xx errors)
+- ✅ Context length validation errors
+- ✅ Moderation flags / content filtering refusals
+- ✅ Any provider-side error
+
+**Failed requests are NOT billed.** You only pay for the model that actually served the response.
+
+### LAYER 2: Provider-Level Fallback (Within Same Model)
+Even within a SINGLE model, OpenRouter automatically tries multiple providers.
+
+For example, `meta-llama/llama-4-maverick` is hosted on:
+- Groq
+- Together AI
+- Fireworks
+- DeepInfra
+- SambaNova
+- And more...
+
+If Groq is down, OpenRouter automatically routes to Together. If Together is slow, it routes to Fireworks. **This happens transparently by default** (`allow_fallbacks: true`).
+
+---
+
+## 🔧 ADVANCED ROUTING CONFIGURATIONS
+
+### Configuration 1: Ordered Provider Chain (Your Exact Use Case)
+```python
+{
+    "model": "openai/gpt-4.1",
+    "models": [
+        "openai/gpt-4.1",
+        "google/gemini-2.5-pro",
+        "anthropic/claude-sonnet-4-6",
+        "mistralai/mistral-large-2407",
+        "deepseek/deepseek-v3.2",
+        "meta-llama/llama-4-maverick"
+    ],
+    "messages": [{"role": "user", "content": "Hello"}]
+}
+```
+This tries each model in order. If ALL fail, you get the last error.
+
+### Configuration 2: Cheapest-First Rotation (Cost Optimization)
+```python
+{
+    "models": [
+        "openai/gpt-4.1:floor",          # :floor = cheapest provider
+        "google/gemini-2.5-pro:floor",
+        "anthropic/claude-sonnet-4-6:floor",
+        "meta-llama/llama-4-maverick:floor"
+    ],
+    "provider": {
+        "sort": "price"    # Always pick cheapest available
+    }
+}
+```
+
+### Configuration 3: Fastest-First Rotation (Speed Optimization)
+```python
+{
+    "models": [
+        "openai/gpt-4.1:nitro",          # :nitro = fastest provider
+        "google/gemini-2.5-pro:nitro",
+        "anthropic/claude-sonnet-4-6:nitro"
+    ],
+    "provider": {
+        "sort": "throughput"
+    }
+}
+```
+
+### Configuration 4: Pin Provider Order + Allow Fallbacks
+```python
+{
+    "model": "openai/gpt-4.1",
+    "models": [
+        "openai/gpt-4.1",
+        "anthropic/claude-sonnet-4-6",
+        "google/gemini-2.5-pro"
+    ],
+    "provider": {
+        "order": ["OpenAI", "Anthropic", "Google"],
+        "allow_fallbacks": true
+    }
+}
+```
+
+### Configuration 5: OpenRouter Auto-Router (AI Picks For You)
+```python
+{
+    "model": "openrouter/auto",
+    "messages": [{"role": "user", "content": "Hello"}]
+}
+```
+OpenRouter's `auto` router uses AI to pick the BEST model for each prompt automatically based on task complexity, cost, and availability.
+
+---
+
+## 📊 WHAT HAPPENS WHEN QUOTA IS EXHAUSTED
+
+| Scenario | Error Code | OpenRouter Behavior |
+|----------|-----------|---------------------|
+| OpenAI quota finished | 429 | Automatically tries next model in `models` array |
+| Gemini rate limited | 429 | Falls through to Claude in your chain |
+| Claude over capacity | 503 | Tries DeepSeek, Mistral, Llama, etc. |
+| Provider outage (30s+) | 5xx | Auto-deprioritized in load balancing |
+| Account balance exhausted | 402 | Top up credits needed (applies to ALL models) |
+| Free model daily limit | 429 | Switches to paid variant or next fallback |
+
+**Key insight:** When a provider's quota is exhausted, OpenRouter detects the 429 error and IMMEDIATELY tries the next model in your fallback chain. The user sees zero interruption.
+
+---
+
+## 💰 PRICING REALITY CHECK
+
+| Aspect | Details |
+|--------|---------|
+| OpenRouter markup | 5-15% on top of provider pricing |
+| Fallback billing | Only the model that SERVES the response is billed |
+| Failed attempts | FREE — not billed |
+| Minimum credit | $5 top-up via Stripe or crypto |
+| Free models | 29 `:free` variants available (rate-limited: 20 req/min) |
+| BYOK option | Bring Your Own Keys — 5% fee, first 1M requests/month free |
+
+---
+
+## 🔄 THE "CIRCULAR" FALLBACK YOU ASKED ABOUT
+
+You asked: *"if OpenAI is finished then go to Gemini, if Gemini finished go to Claude, and later come back to previously used ones"*
+
+**How this works in practice:**
+
+1. **Immediate fallback:** When OpenAI quota is hit → OpenRouter tries Gemini → then Claude → then others. This happens in real-time, per request.
+
+2. **Coming back:** When OpenAI's quota resets (usually hourly/daily depending on tier), OpenRouter will naturally route back to OpenAI on the NEXT request because:
+   - The 429 error from OpenAI is transient (has a `Retry-After` header)
+   - Once the cooldown expires, OpenAI becomes the top candidate again
+   - The `models` array always starts from the FIRST model on each new request
+
+3. **No manual intervention needed.** The fallback is per-request. Each new request starts from the top of your `models` array. If OpenAI has recovered, it gets used again automatically.
+
+---
+
+## ⚠️ IMPORTANT LIMITATIONS & CAVEATS
+
+1. **This is NOT unlimited.** Each provider has its own rate limits and quotas. OpenRouter doesn't bypass provider limits — it routes around them.
+
+2. **Different models = different quality.** A GPT-4.1 response and a Llama response are NOT interchangeable. Test your fallback chain for quality consistency.
+
+3. **OpenRouter is a single point of failure.** If OpenRouter itself goes down, ALL models are inaccessible. Keep direct provider keys as emergency backup.
+
+4. **402 errors (balance exhaustion) affect ALL models.** If your OpenRouter credit balance hits zero, no fallback will work until you top up.
+
+5. **Free model limits are per-account, not per-key.** Extra API keys don't help with free-tier daily limits.
+
+6. **Anthropic fallbacks limit:** When using the Anthropic Messages API endpoint, the `fallbacks` parameter accepts at most 3 entries.
+
+---
+
+## 🛠️ PRACTICAL IMPLEMENTATION CODE
+
+### Python (Complete Working Example)
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key="sk-or-YOUR_KEY_HERE"
+)
+
+# This is your FULL automatic fallback chain
+completion = client.chat.completions.create(
+    model="openai/gpt-4.1",  # Primary model
+    extra_body={
+        "models": [
+            "openai/gpt-4.1",              # 1st: OpenAI
+            "google/gemini-2.5-pro",       # 2nd: Gemini
+            "anthropic/claude-sonnet-4-6", # 3rd: Claude
+            "mistralai/mistral-large-2407",# 4th: Mistral
+            "deepseek/deepseek-v3.2",     # 5th: DeepSeek
+            "meta-llama/llama-4-maverick", # 6th: Llama
+            "qwen/qwen-2.5-72b-instruct" # 7th: Qwen
+        ]
+    },
+    messages=[
+        {"role": "user", "content": "Explain quantum computing"}
+    ]
+)
+
+# The response.model field tells you which model ACTUALLY served it
+print(f"Answered by: {completion.model}")
+print(completion.choices[0].message.content)
+```
+
+### JavaScript/TypeScript (Using Official SDK)
+```typescript
+import { OpenRouter } from '@openrouter/sdk';
+
+const openRouter = new OpenRouter({ apiKey: 'sk-or-YOUR_KEY' });
+
+const completion = await openRouter.chat.send({
+  models: [
+    '~openai/gpt-latest',
+    '~anthropic/claude-sonnet-latest',
+    'google/gemini-2.5-pro',
+    'meta-llama/llama-4-maverick'
+  ],
+  messages: [{ role: 'user', content: 'Hello' }],
+});
+```
+
+---
+
+## 🔍 FORENSIC SOURCES
+
+All information verified from:
+1. OpenRouter Official Docs — Model Fallbacks (https://openrouter.ai/docs/guides/routing/model-fallbacks)
+2. OpenRouter Official Docs — Provider Routing (https://openrouter.ai/docs/guides/routing/provider-selection)
+3. OpenRouter Official Docs — BYOK (https://openrouter.ai/docs/guides/overview/auth/byok)
+4. OpenRouter Official Docs — Rate Limits (https://openrouter.ai/docs/api_reference/limits)
+5. Multiple independent reviews & guides from 2025-2026
+
+---
+
+## ✅ VERDICT
+
+**CONFIRMED: OpenRouter does exactly what you asked about.**
+
+One API key → multiple providers → automatic fallback when one is exhausted → automatic return when it recovers. The `models` array parameter is the key feature that makes this possible.
+
+The system works on a per-request basis: each request tries models in order from the top of your list. When a provider's quota resets, it naturally gets picked up again on the next request because it's back at the top of the priority chain.

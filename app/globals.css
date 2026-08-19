@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b1220;
+  --color-muted: #5b6575;
+  --color-line: #e6eaf0;
+  --color-paper: #f7f8fa;
+  --color-ghana-green: #0b7a43;
+  --color-ghana-gold: #e8b923;
+  --color-ghana-red: #c8102e;
+  --color-teal: #0e7490;
+  --color-teal-soft: #e6f6f8;
+  --color-green-soft: #e8f6ee;
+  --color-gold-soft: #fff6d8;
+  --color-red-soft: #fdecee;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+}
+
+html,
+body {
+  background: #f7f8fa;
+  color: #0b1220;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(900px 420px at 8% -10%, rgba(11, 122, 67, 0.08), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, rgba(232, 185, 35, 0.12), transparent 50%),
+    radial-gradient(600px 300px at 70% 100%, rgba(14, 116, 144, 0.06), transparent 50%);
+}
+
+::selection {
+  background: #0b7a43;
+  color: white;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(230, 234, 240, 0.95);
+}
+
+.shadow-card {
+  box-shadow: 0 18px 50px rgba(11, 18, 32, 0.06);
+}
+
+.flag-bar {
+  background: linear-gradient(90deg, #c8102e 0 33%, #e8b923 33% 66%, #0b7a43 66% 100%);
+}
+
+.prose-ghana :where(h1, h2, h3) {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+.prose-ghana a {
+  color: #0b7a43;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose-ghana code {
+  background: #f0f3f7;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.9em;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.7s ease both;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}

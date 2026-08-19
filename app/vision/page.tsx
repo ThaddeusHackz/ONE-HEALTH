@@ -1,0 +1,94 @@
+"use client";
+
+import { useState } from "react";
+import { Markdown } from "@/components/Markdown";
+import { Disclaimer } from "@/components/Disclaimer";
+
+const ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.tsv,.json,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.bmp,.xml,.html,image/*,application/pdf";
+
+export default function VisionPage() {
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [kind, setKind] = useState("document");
+  const [prompt, setPrompt] = useState("Extract any Ghana region, disease, dates and counts. Redact identifiers.");
+  const [out, setOut] = useState("");
+  const [model, setModel] = useState("");
+  const [meta, setMeta] = useState("");
+  const [redactions, setRedactions] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  function onFiles(list: FileList | null) {
+    if (!list) return;
+    const next = Array.from(list).slice(0, 8);
+    setFiles(next);
+    setPreviews(next.filter((f) => f.type.startsWith("image/")).map((f) => URL.createObjectURL(f)));
+  }
+
+  async function run() {
+    if (!files.length) return;
+    setBusy(true);
+    setOut("");
+    try {
+      const fd = new FormData();
+      files.forEach((f) => fd.append("files", f));
+      fd.set("kind", kind);
+      fd.set("prompt", prompt);
+      const res = await fetch("/api/vision", { method: "POST", body: fd });
+      const json = await res.json();
+      setOut(json.text || json.analysis || json.error || "No analysis");
+      setModel(json.model || "");
+      setMeta(Array.isArray(json.files) ? json.files.map((f: { name: string; kind: string }) => `${f.name} · ${f.kind}`).join(" · ") : "");
+      setRedactions(Number(json.redactions) || 0);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-10 md:px-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">Vision lab</p>
+      <h1 className="font-display mt-2 text-4xl tracking-tight">Any file Ghana Health Service can hold</h1>
+      <p className="mt-3 max-w-3xl text-muted">
+        PDF circulars, Word memos, Excel line lists, CSV extracts, lab photos, IDSR scans. Text layers are read locally; images and PDFs go through the OpenRouter vision chain (Gemini → GPT-4.1 → Claude). Every run is stored in the site database for the admin desk.
+      </p>
+      <div className="mt-5">
+        <Disclaimer />
+      </div>
+      <img src="/images/vision-ingest.png" alt="Document ingestion" className="mt-8 w-full rounded-[28px] border border-line bg-white shadow-card" />
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-[28px] border border-line bg-white p-6 shadow-card">
+          <h2 className="font-display text-2xl">Drop files</h2>
+          <input className="mt-4 block w-full text-sm" type="file" accept={ACCEPT} multiple onChange={(e) => onFiles(e.target.files)} />
+          <ul className="mt-3 space-y-1 text-xs text-muted">
+            {files.map((f) => (
+              <li key={f.name}>{f.name} · {Math.round(f.size / 1024)} KB · {f.type || "unknown"}</li>
+            ))}
+          </ul>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {previews.map((src) => (
+              <img key={src} src={src} alt="" className="h-24 w-full rounded-xl object-cover ring-1 ring-line" />
+            ))}
+          </div>
+          <select className="mt-4 w-full rounded-2xl border border-line px-3 py-2 text-sm" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="document">Document / IDSR / circular</option>
+            <option value="lab">Lab or RDT slip</option>
+            <option value="clinical">Clinical / field photo</option>
+            <option value="environment">Environment / veterinary</option>
+            <option value="data">Spreadsheet / CSV extract</option>
+          </select>
+          <textarea className="mt-3 w-full rounded-2xl border border-line px-3 py-2 text-sm" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <button onClick={() => void run()} disabled={busy || !files.length} className="mt-3 w-full rounded-2xl bg-ink py-3 text-sm font-semibold text-white">
+            {busy ? "Reading with the fallback chain…" : "Analyse and store"}
+          </button>
+        </div>
+        <div className="rounded-[28px] border border-line bg-white p-6 shadow-card">
+          <div className="text-xs uppercase tracking-wider text-muted">{model || "awaiting file"}</div>
+          {meta && <div className="mt-1 text-xs text-muted">{meta}</div>}
+          {redactions > 0 && <div className="mt-1 text-xs text-ghana-red">{redactions} identifier(s) redacted before the model saw the text.</div>}
+          {out ? <div className="mt-3"><Markdown text={out} /></div> : <p className="mt-3 text-sm text-muted">Nothing extracted yet. Do not upload folder numbers, names, or faces.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
