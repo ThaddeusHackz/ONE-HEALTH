@@ -30,6 +30,16 @@ Without a key the statistical engine, regional board, and offline briefings stil
 Admin CMS (Wix-style copy, colours, nav, stored files): `/admin`  
 Set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env.local`. Never commit them.
 
+Host anywhere that can run Node 20+ (Render, Railway, a VPS, Docker):
+
+```bash
+npm ci --include=dev
+npm run build
+npm start
+```
+
+The process listens on `0.0.0.0:$PORT`. Put keys in the host’s environment panel, not in the repo. Official DHIMS2 CSVs can be loaded on `/forecast`. Audit pack downloads from `/admin`.
+
 ## What to put in Render
 
 See [DEPLOYMENT.md](DEPLOYMENT.md). Required for live AI:

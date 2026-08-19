@@ -14,6 +14,7 @@ export default function VisionPage() {
   const [out, setOut] = useState("");
   const [model, setModel] = useState("");
   const [meta, setMeta] = useState("");
+  const [redactions, setRedactions] = useState(0);
   const [busy, setBusy] = useState(false);
 
   function onFiles(list: FileList | null) {
@@ -37,6 +38,7 @@ export default function VisionPage() {
       setOut(json.text || json.analysis || json.error || "No analysis");
       setModel(json.model || "");
       setMeta(Array.isArray(json.files) ? json.files.map((f: { name: string; kind: string }) => `${f.name} · ${f.kind}`).join(" · ") : "");
+      setRedactions(Number(json.redactions) || 0);
     } finally {
       setBusy(false);
     }
@@ -83,6 +85,7 @@ export default function VisionPage() {
         <div className="rounded-[28px] border border-line bg-white p-6 shadow-card">
           <div className="text-xs uppercase tracking-wider text-muted">{model || "awaiting file"}</div>
           {meta && <div className="mt-1 text-xs text-muted">{meta}</div>}
+          {redactions > 0 && <div className="mt-1 text-xs text-ghana-red">{redactions} identifier(s) redacted before the model saw the text.</div>}
           {out ? <div className="mt-3"><Markdown text={out} /></div> : <p className="mt-3 text-sm text-muted">Nothing extracted yet. Do not upload folder numbers, names, or faces.</p>}
         </div>
       </div>

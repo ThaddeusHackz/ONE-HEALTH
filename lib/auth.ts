@@ -30,12 +30,18 @@ export function readSession(token?: string | null): { email: string } | null {
   }
 }
 
+function cookieFlags() {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE}${secure}`;
+}
+
 export function cookieHeader(token: string) {
-  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE}`;
+  return `${COOKIE}=${token}; ${cookieFlags()}`;
 }
 
 export function clearCookieHeader() {
-  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 export function tokenFromRequest(req: Request) {

@@ -34,6 +34,26 @@ export interface ForecastRow {
   createdAt: string;
 }
 
+export interface OfficialSeries {
+  id: string;
+  diseaseId: string;
+  regionId: string;
+  districtId?: string;
+  source: string;
+  points: { date: string; cases: number }[];
+  createdAt: string;
+}
+
+export interface AuditRow {
+  id: string;
+  at: string;
+  actor: string;
+  action: string;
+  model?: string;
+  redactions: number;
+  detail: string;
+}
+
 export interface ActivityRow {
   id: string;
   actor: string;

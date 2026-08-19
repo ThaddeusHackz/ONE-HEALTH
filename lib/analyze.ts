@@ -1,13 +1,14 @@
 import { extractFile, type ExtractedFile } from "./files";
 import { openRouterConfigured, visionAnalyze } from "./openrouter";
+import { redactText } from "./redact";
 import type { DocumentRow } from "./records";
-import { logActivity, saveDB, uid } from "./store";
+import { logActivity, recordAudit, saveDB, uid } from "./store";
 
 export async function analyzeUploads(opts: {
   files: File[];
   prompt?: string;
   kind?: string;
-}): Promise<{ analysis: string; model: string; extracted: ExtractedFile[]; saved: DocumentRow[] }> {
+}): Promise<{ analysis: string; model: string; extracted: ExtractedFile[]; saved: DocumentRow[]; redactions: number }> {
   const extracted: ExtractedFile[] = [];
   for (const file of opts.files.slice(0, 8)) {
     extracted.push(await extractFile(file));
@@ -17,9 +18,15 @@ export async function analyzeUploads(opts: {
   const pdfs = extracted
     .filter((e) => e.kind === "pdf" && e.dataUrl)
     .map((e) => ({ filename: e.name, file_data: e.dataUrl! }));
+  let redactions = 0;
   const textBlock = extracted
     .filter((e) => e.text)
-    .map((e) => `## ${e.name} (${e.kind})\n${e.text.slice(0, 8000)}`)
+    .map((e) => {
+      const red = redactText(e.text.slice(0, 8000));
+      redactions += red.count;
+      e.text = red.text;
+      return `## ${e.name} (${e.kind})\n${red.text}`;
+    })
     .join("\n\n");
 
   const prompt = `${opts.prompt || defaultPrompt(opts.kind)}
@@ -78,8 +85,15 @@ ${textBlock || "(no text layer — rely on vision / file parts)"}`;
     db.documents = db.documents.slice(0, 400);
   });
   logActivity("system", "ingest", saved.map((s) => s.name).join(", "));
+  recordAudit({
+    actor: "vision",
+    action: "document.analyze",
+    model,
+    redactions,
+    detail: saved.map((s) => s.name).join(", "),
+  });
 
-  return { analysis, model, extracted, saved };
+  return { analysis, model, extracted, saved, redactions };
 }
 
 function defaultPrompt(kind?: string) {

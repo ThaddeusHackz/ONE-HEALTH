@@ -20,6 +20,8 @@ export interface AlertEvent {
   date: string;
   cases: number;
   z: number;
+  cusum: number;
+  source: "zscore" | "cusum" | "both";
   level: "watch" | "alert" | "severe";
   note: string;
 }
@@ -49,6 +51,8 @@ export interface ForecastBundle {
     last8Std: number;
     latest: number;
     latestZ: number;
+    latestCusum: number;
+    source: "demonstration" | "official";
   };
 }
 
@@ -352,6 +356,7 @@ function trainForest(X: number[][], y: number[], trees = 28, seed = 7): Tree[] {
 }
 
 function forestPredict(forest: Tree[], x: number[]): { mean: number; low: number; high: number } {
+  if (!forest.length) return { mean: 0, low: 0, high: 0 };
   const preds = forest.map((tr) => walk(tr, x)).sort((a, b) => a - b);
   const m = mean(preds);
   const lo = preds[Math.floor(preds.length * 0.05)] ?? m;
@@ -415,18 +420,44 @@ function packModel(
   };
 }
 
+export function cusumSeries(values: number[], k = 0.5, h = 5) {
+  const trainN = Math.max(8, Math.floor(values.length * 0.6));
+  const mu = mean(values.slice(0, trainN));
+  const sigma = stdev(values.slice(0, trainN)) || 1;
+  let s = 0;
+  return values.map((x) => {
+    s = Math.max(0, s + (x - mu) / sigma - k);
+    return { s: Number(s.toFixed(3)), trip: s > h };
+  });
+}
+
 export function runForecast(opts: {
   diseaseId: string;
   regionId: string;
   horizon?: number;
+  districtScale?: number;
+  official?: { date: string; cases: number }[];
 }): ForecastBundle {
   const horizon = clamp(opts.horizon ?? 4, 1, 12);
   const disease = diseaseById(opts.diseaseId);
   const region = regionById(opts.regionId);
-  const series = buildWeeklySeries(disease.id, region.id, 260);
+  let series = opts.official?.length
+    ? opts.official
+        .slice()
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((p, i) => ({ date: p.date, week: i, cases: Math.max(0, p.cases), imputed: false }))
+    : buildWeeklySeries(disease.id, region.id, 260);
+  if (opts.districtScale && opts.districtScale > 0 && !opts.official?.length) {
+    series = series.map((row) => ({ ...row, cases: Math.round(row.cases * opts.districtScale!) }));
+  }
+  if (series.length < 16) {
+    const extra = buildWeeklySeries(disease.id, region.id, 52);
+    series = [...extra.slice(0, 52 - series.length), ...series].map((s, i) => ({ ...s, week: i }));
+  }
   const values = series.map((s) => s.cases);
   const dates = series.map((s) => new Date(s.date + "T00:00:00Z"));
-  const split = series.length - 26;
+  const holdout = Math.min(26, Math.max(6, Math.floor(series.length * 0.2)));
+  const split = Math.max(12, series.length - holdout);
   const trainVals = values.slice(0, split);
   const testVals = values.slice(split);
 
@@ -436,8 +467,8 @@ export function runForecast(opts: {
     X.push(featuresFor(values, dates, i));
     y.push(values[i]);
   }
-  const lin = trainLinear(X, y);
-  const forest = trainForest(X, y, 24, hash(disease.id + region.id));
+  const lin = X.length ? trainLinear(X, y) : [0];
+  const forest = X.length ? trainForest(X, y, 24, hash(disease.id + region.id)) : [];
 
   const rfBack: number[] = [];
   const linBack: number[] = [];
@@ -522,19 +553,24 @@ export function runForecast(opts: {
   };
 
   const win = 8;
+  const cusum = cusumSeries(values);
   const alerts: AlertEvent[] = [];
   for (let i = win; i < series.length; i++) {
     const base = values.slice(i - win, i);
     const m = mean(base);
     const s = stdev(base) || 1;
     const z = (values[i] - m) / s;
-    if (z > 2) {
+    const c = cusum[i];
+    if (z > 2 || c.trip) {
+      const source = z > 2 && c.trip ? "both" : c.trip ? "cusum" : "zscore";
       alerts.push({
         date: series[i].date,
         cases: values[i],
         z: Number(z.toFixed(2)),
-        level: z > 3.5 ? "severe" : z > 2.6 ? "alert" : "watch",
-        note: `${disease.short} at ${values[i]} vs ${m.toFixed(0)} eight-week baseline (z=${z.toFixed(2)}). Investigate reporting artefacts before declaring an outbreak.`,
+        cusum: c.s,
+        source,
+        level: z > 3.5 || c.s > 8 ? "severe" : z > 2.6 || c.s > 6 ? "alert" : "watch",
+        note: `${disease.short} at ${values[i]} vs ${m.toFixed(0)} eight-week baseline (z=${z.toFixed(2)}, CUSUM=${c.s}). ${source === "cusum" ? "CUSUM tripped on accumulated excess." : "Investigate reporting artefacts before declaring an outbreak."}`,
       });
     }
   }
@@ -585,6 +621,8 @@ export function runForecast(opts: {
       last8Std: Number(last8Std.toFixed(2)),
       latest,
       latestZ: Number(latestZ.toFixed(2)),
+      latestCusum: cusum[cusum.length - 1]?.s || 0,
+      source: opts.official?.length ? "official" : "demonstration",
     },
   };
 }

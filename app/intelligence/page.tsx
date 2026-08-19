@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { Disclaimer } from "@/components/Disclaimer";
 import { DISEASES, REGIONS } from "@/lib/ghana";
+import { FIELD_LANGUAGES } from "@/lib/languages";
 import { Mic, Search, Send, Volume2 } from "lucide-react";
 
 interface Msg {
@@ -22,6 +23,7 @@ export default function IntelligencePage() {
     },
   ]);
   const [input, setInput] = useState("");
+  const [language, setLanguage] = useState("en");
   const [search, setSearch] = useState(true);
   const [diseaseId, setDiseaseId] = useState("malaria");
   const [regionId, setRegionId] = useState("national");
@@ -52,6 +54,7 @@ export default function IntelligencePage() {
           search,
           diseaseId,
           regionId,
+          language,
         }),
       });
       // include full conversation except the welcome if needed
@@ -134,6 +137,11 @@ export default function IntelligencePage() {
           <option value="national">National</option>
           {REGIONS.map((r) => (
             <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </select>
+        <select className="rounded-full border border-line bg-white px-3 py-2 text-sm" value={language} onChange={(e) => setLanguage(e.target.value)}>
+          {FIELD_LANGUAGES.map((l) => (
+            <option key={l.id} value={l.id}>{l.label}</option>
           ))}
         </select>
         <button

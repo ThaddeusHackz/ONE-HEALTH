@@ -23,7 +23,7 @@ Never commit `.env.local`.
 |---|---|
 | Runtime | Node |
 | Build | `npm ci --include=dev && npm run build` |
-| Start | `npm start` |
+| Start | `npm start` (binds `0.0.0.0` and honours `PORT`) |
 | Health check | `/api/health` |
 | Instance | Free is fine for the viva; upgrade if the cold start is too slow |
 

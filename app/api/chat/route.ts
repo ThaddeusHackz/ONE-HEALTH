@@ -3,7 +3,9 @@ import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrout
 import { formatHits, webSearch } from "@/lib/search";
 import { GHANA_CONTEXT } from "@/lib/ghana";
 import { runForecast } from "@/lib/forecast";
-import { saveDB, uid } from "@/lib/store";
+import { languageInstruction } from "@/lib/languages";
+import { redactMessages, redactText } from "@/lib/redact";
+import { recordAudit, saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -13,18 +15,21 @@ export async function POST(req: Request) {
     search?: boolean;
     diseaseId?: string;
     regionId?: string;
+    language?: string;
   };
 
-  const history = (body.messages || []).slice(-16);
+  const history = redactMessages((body.messages || []).slice(-16));
   const last = [...history].reverse().find((m) => m.role === "user")?.content || "";
+  const redactions = (body.messages || []).reduce((n, m) => n + redactText(m.content).count, 0);
 
   if (!openRouterConfigured()) {
     const text = offlineAnswer(last);
-    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge");
+    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge", redactions);
     return NextResponse.json({
       text,
       model: "offline-ghana-knowledge",
       citations: [],
+      redactions,
     });
   }
 
@@ -62,6 +67,7 @@ export async function POST(req: Request) {
 
 You may use live web findings if provided. Cite URLs inline.
 If a local ensemble forecast is provided, treat it as a model output with intervals, not ground truth.
+${languageInstruction(body.language)}
 ${searchBlock}${forecastBlock}`,
     },
     ...history.map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
@@ -69,19 +75,20 @@ ${searchBlock}${forecastBlock}`,
 
   try {
     const result = await complete({ messages, temperature: 0.35, maxTokens: 1800 });
-    persistChat([...history, { role: "assistant", content: result.text }], result.model);
-    return NextResponse.json({ text: result.text, model: result.model, citations });
+    persistChat([...history, { role: "assistant", content: result.text }], result.model, redactions);
+    return NextResponse.json({ text: result.text, model: result.model, citations, redactions });
   } catch (err) {
     const text = offlineAnswer(last);
-    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge");
+    persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge", redactions);
     return NextResponse.json(
-      { error: (err as Error).message, text, model: "offline-ghana-knowledge" },
+      { error: (err as Error).message, text, model: "offline-ghana-knowledge", redactions },
       { status: 200 },
     );
   }
 }
 
-function persistChat(messages: { role: string; content: string }[], model: string) {
+function persistChat(messages: { role: string; content: string }[], model: string, redactions = 0) {
+  recordAudit({ actor: "intelligence", action: "chat", model, redactions, detail: messages.find((m) => m.role === "user")?.content.slice(0, 80) || "chat" });
   const title = messages.find((m) => m.role === "user")?.content.slice(0, 80) || "Conversation";
   saveDB((db) => {
     db.chats.unshift({ id: uid("chat"), title, messages, model, createdAt: new Date().toISOString() });

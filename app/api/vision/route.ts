@@ -43,6 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       text: result.analysis,
       model: result.model,
+      redactions: result.redactions,
       files: result.extracted.map((e) => ({ name: e.name, type: e.type, kind: e.kind, size: e.size, chars: e.text.length })),
     });
   } catch (err) {

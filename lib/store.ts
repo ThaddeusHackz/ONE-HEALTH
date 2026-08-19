@@ -3,9 +3,9 @@ import { join } from "path";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { adminEmail, adminName, adminPassword } from "./env";
 import { DEFAULT_CONTENT, DEFAULT_KNOWLEDGE, DEFAULT_NAV, type NavItem, type SiteContent } from "./cms";
-import type { ActivityRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem } from "./records";
+import type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
 
-export type { ActivityRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem } from "./records";
+export type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
 
 export interface AdminUser {
   id: string;
@@ -22,6 +22,8 @@ export interface Database {
   documents: DocumentRow[];
   chats: ChatRow[];
   forecasts: ForecastRow[];
+  officialSeries: OfficialSeries[];
+  audits: AuditRow[];
   activity: ActivityRow[];
   admins: AdminUser[];
 }
@@ -59,6 +61,8 @@ function emptyDb(): Database {
     documents: [],
     chats: [],
     forecasts: [],
+    officialSeries: [],
+    audits: [],
     activity: [],
     admins: [seedAdmin()],
   };
@@ -76,6 +80,8 @@ function load(): Database {
         ...raw,
         content: { ...DEFAULT_CONTENT, ...(raw.content || {}) },
         nav: raw.nav?.length ? raw.nav : DEFAULT_NAV.map((n) => ({ ...n })),
+        officialSeries: raw.officialSeries || [],
+        audits: raw.audits || [],
         admins: raw.admins?.length ? raw.admins : [seedAdmin()],
       };
       return cache;
@@ -119,4 +125,19 @@ export function logActivity(actor: string, action: string, detail = "") {
 export function publicConfig() {
   const db = load();
   return { content: db.content, nav: db.nav.filter((n) => n.visible), knowledge: db.knowledge };
+}
+
+export function findOfficialSeries(diseaseId: string, regionId: string, districtId?: string) {
+  const db = load();
+  const match = db.officialSeries.find(
+    (s) => s.diseaseId === diseaseId && s.regionId === regionId && (districtId ? s.districtId === districtId : !s.districtId),
+  );
+  return match || db.officialSeries.find((s) => s.diseaseId === diseaseId && s.regionId === regionId) || null;
+}
+
+export function recordAudit(row: Omit<AuditRow, "id" | "at">) {
+  saveDB((db) => {
+    db.audits.unshift({ id: uid("aud"), at: new Date().toISOString(), ...row });
+    db.audits = db.audits.slice(0, 500);
+  });
 }

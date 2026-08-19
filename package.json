@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "start": "node scripts/start.cjs",
+    "selftest": "node scripts/selftest.cjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },

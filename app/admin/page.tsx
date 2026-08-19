@@ -129,6 +129,9 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+            <a href="/api/admin/audit" className="mt-6 inline-block rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
+              Download signed audit pack
+            </a>
             <h2 className="mt-8 font-semibold">Recent activity</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {activity.map((a) => (

@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { DISEASES, REGIONS } from "@/lib/ghana";
+import { districtsFor } from "@/lib/districts";
 import { Disclaimer } from "@/components/Disclaimer";
 import type { ForecastBundle } from "@/lib/forecast";
 
@@ -21,10 +22,13 @@ function ForecastInner() {
   const params = useSearchParams();
   const [diseaseId, setDiseaseId] = useState(params.get("disease") || "malaria");
   const [regionId, setRegionId] = useState(params.get("region") || "national");
+  const [districtId, setDistrictId] = useState("");
   const [horizon, setHorizon] = useState(4);
   const [data, setData] = useState<ForecastBundle & { briefing?: string; briefingModel?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [seriesNote, setSeriesNote] = useState("");
+  const localDistricts = districtsFor(regionId);
 
   async function load(brief = false) {
     setLoading(true);
@@ -33,7 +37,7 @@ function ForecastInner() {
       const res = await fetch("/api/forecast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ diseaseId, regionId, horizon, brief }),
+        body: JSON.stringify({ diseaseId, regionId, districtId: districtId || undefined, horizon, brief }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Forecast failed");
@@ -74,7 +78,7 @@ function ForecastInner() {
         Chronological training, leakage-safe lags, baselines first. The ensemble only ships if it earns its keep against last week’s number.
       </p>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-4">
+      <div className="mt-6 grid gap-3 md:grid-cols-5">
         <label className="text-sm">
           <span className="mb-1 block text-muted">Signal</span>
           <select className="w-full rounded-2xl border border-line bg-white px-3 py-3" value={diseaseId} onChange={(e) => setDiseaseId(e.target.value)}>
@@ -85,10 +89,19 @@ function ForecastInner() {
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-muted">Region</span>
-          <select className="w-full rounded-2xl border border-line bg-white px-3 py-3" value={regionId} onChange={(e) => setRegionId(e.target.value)}>
+          <select className="w-full rounded-2xl border border-line bg-white px-3 py-3" value={regionId} onChange={(e) => { setRegionId(e.target.value); setDistrictId(""); }}>
             <option value="national">National (all regions)</option>
             {REGIONS.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">District</span>
+          <select className="w-full rounded-2xl border border-line bg-white px-3 py-3" value={districtId} onChange={(e) => setDistrictId(e.target.value)} disabled={!localDistricts.length}>
+            <option value="">{localDistricts.length ? "All districts in region" : "Region-level"}</option>
+            {localDistricts.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
         </label>
@@ -112,13 +125,35 @@ function ForecastInner() {
       <div className="mt-5">
         <Disclaimer />
       </div>
+      <label className="mt-4 block rounded-2xl border border-dashed border-line bg-white px-4 py-3 text-sm">
+        Replace demonstration series with official weekly CSV (headers must include date + cases)
+        <input
+          className="mt-2 block w-full text-xs"
+          type="file"
+          accept=".csv,text/csv"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const csv = await file.text();
+            const res = await fetch("/api/series", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ diseaseId, regionId, districtId: districtId || undefined, csv, source: file.name }),
+            });
+            const json = await res.json();
+            setSeriesNote(res.ok ? `Loaded ${json.weeks} official weeks from ${file.name}` : json.error || "Upload failed");
+            if (res.ok) void load(false);
+          }}
+        />
+        {seriesNote && <p className="mt-2 text-xs text-ghana-green">{seriesNote}</p>}
+      </label>
       {err && <p className="mt-3 text-sm text-ghana-red">{err}</p>}
 
       {data && (
         <>
           <div className="mt-6 grid gap-3 md:grid-cols-4">
             <Stat label="Latest week" value={data.diagnostics.latest.toLocaleString()} hint={data.disease.unit} />
-            <Stat label="8-week mean" value={data.diagnostics.last8Mean.toFixed(0)} hint={`z = ${data.diagnostics.latestZ}`} />
+            <Stat label="8-week mean" value={data.diagnostics.last8Mean.toFixed(0)} hint={`z = ${data.diagnostics.latestZ} · CUSUM ${data.diagnostics.latestCusum ?? 0} · ${data.diagnostics.source}`} />
             <Stat
               label="Next week ensemble"
               value={Math.round(data.ensemble.points[0].point).toLocaleString()}
@@ -219,7 +254,7 @@ function ForecastInner() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-semibold">{a.date}</span>
                       <span className={`rounded-full px-2 py-0.5 text-xs ${a.level === "severe" ? "bg-red-soft text-ghana-red" : "bg-gold-soft"}`}>
-                        {a.level} · z {a.z}
+                        {a.level} · {a.source} · z {a.z}{typeof a.cusum === "number" ? ` · CUSUM ${a.cusum}` : ""}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-muted">{a.note}</p>
