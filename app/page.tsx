@@ -85,6 +85,14 @@ export default function HomePage() {
             </Link>
           );
         })}
+        <Link href="/extracts" className="group rounded-[28px] border border-line bg-white p-6 shadow-card">
+          <h3 className="font-display text-2xl">DHIMS2 / IDSR extracts</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">Load official weekly CSVs. Quality log, completeness, OpenRouter review, then the forecast desk uses that series.</p>
+        </Link>
+        <Link href="/field" className="group rounded-[28px] border border-line bg-white p-6 shadow-card">
+          <h3 className="font-display text-2xl">Spoken field brief</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">Ninety-word CHPS card in English, Twi, Ewe, Ga or Hausa — then speak it.</p>
+        </Link>
         <Link href="/climate" className="group rounded-[28px] border border-line bg-white p-6 shadow-card md:col-span-2">
           <CloudSun className="h-6 w-6 text-teal" />
           <h3 className="mt-4 font-display text-2xl">Climate desk — OpenWeather across Ghana</h3>

@@ -38,7 +38,7 @@ npm run build
 npm start
 ```
 
-The process listens on `0.0.0.0:$PORT`. Put keys in the host’s environment panel, not in the repo. Official DHIMS2 CSVs can be loaded on `/extracts`. Audit pack and the append-only event log download from `/admin`.
+The process listens on `0.0.0.0:$PORT`. Put keys in the host’s environment panel, not in the repo. Official DHIMS2 CSVs can be loaded on `/extracts`. Field briefs are on `/field`. Audit pack and the append-only event log download from `/admin`. Full inventory: [CHANGELOG.md](CHANGELOG.md).
 
 **Longevity:** every mutation is appended to `data/events.jsonl` and, if `DATABASE_URL` is set, to Postgres. That can last decades **only if** you keep that database and off-site backups. A free Render disk is wiped on sleep — it will not last 89 years by itself.
 
