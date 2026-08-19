@@ -27,6 +27,9 @@ Open http://localhost:3000
 
 Without a key the statistical engine, regional board, and offline briefings still run. Live vision, chat synthesis, and Whisper need OpenRouter.
 
+Admin CMS (Wix-style copy, colours, nav, stored files): `/admin`  
+Set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env.local`. Never commit them.
+
 ## What to put in Render
 
 See [DEPLOYMENT.md](DEPLOYMENT.md). Required for live AI:
