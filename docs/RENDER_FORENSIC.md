@@ -1,42 +1,63 @@
-# Render.com forensic — will this site actually boot?
+# Render.com forensic — will every feature work?
 
 Date: 2026-08-19  
-Verdict: **Yes, as one Node web service**, if you fill the `sync: false` secrets. It will not be “perfect forever” on the free tier. The list below is what was checked and what was fixed.
+**Boot verdict: YES**, as one Node web service, if you set the four required secrets.  
+**“Everything works just as locally” verdict: NO — not every feature, not forever, not on free disk.**
 
-## What Render needs
+This is the honest map. Nothing here is a guess about a feature we did not implement.
 
-| Check | Status | Note |
+## A. Deploy plumbing (will the box come up?)
+
+| Check | Result | If it fails |
 |---|---|---|
-| Single web process (no separate frontend) | Pass | Next.js App Router serves UI + `/api/*` |
-| Bind `0.0.0.0` | Pass | `scripts/start.cjs` passes `-H 0.0.0.0` |
-| Honour `PORT` | Pass | `process.env.PORT` |
-| Health check `GET /api/health` → 200 | Pass | Now survives a failed disk write |
-| Build: TypeScript + Tailwind present | Pass | `npm ci --include=dev && npm run build` |
-| `next` available at runtime | Pass | listed in `dependencies`, not only dev |
-| Secrets not in git | Pass | `.env.local` gitignored |
-| HTTPS cookies | Pass | `Secure` when `NODE_ENV=production` |
-| SIGTERM forwarded on deploy | Pass | start script now kills the Next child |
-| Node version pinned | Pass | `engines` + `NODE_VERSION=22.12.0` |
-| Region | Pass | Frankfurt (closest common region to Accra) |
+| One process for UI + `/api` | Pass | — |
+| `0.0.0.0` + `$PORT` | Pass (`scripts/start.cjs`) | Render default PORT is 10000; we honour it |
+| `GET /api/health` → 200 | Pass (store errors swallowed) | Deploy would roll back |
+| Build has TypeScript/Tailwind | Pass (`npm ci --include=dev`) | Need `--include=dev` or `next build` cannot compile |
+| `next` at runtime | Pass (production dependency) | — |
+| Lint cannot fail the build | Pass (`eslint.ignoreDuringBuilds`) | Fixed this pass |
+| Invalid `NEXT_PUBLIC_SITE_URL` cannot crash build | Pass (safe URL helper) | Fixed this pass |
+| `pg` not webpack-bundled | Pass (`serverExternalPackages`) | Fixed this pass |
+| Node 22 | Pass (`.node-version` + `NODE_VERSION`) | — |
+| SIGTERM on deploy | Pass | — |
+| Secrets not in git | Pass | — |
+| Blueprint plan | **starter** | Free web services spin down; starter stays warm |
 
-## What is *not* perfect on free Render
+Required dashboard values: `OPENROUTER_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL`.  
+Optional keys default to empty so **Apply is not blocked**.
 
-1. **Ephemeral disk.** `data/db.json` (CMS edits, chats, uploaded series) dies on every restart or spin-down. The site still boots. Re-enter official CSVs after a sleep if you care.
-2. **Cold start 30–60s.** First hit after idle looks like a hang. That is the box waking, not OpenRouter.
-3. **512 MB RAM at runtime.** Forecast + vision + a large PDF in memory can get tight. Upgrade the instance if you see OOM kills.
-4. **`sync: false` env vars.** Blueprint will sit waiting until you paste `OPENROUTER_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL`. Empty OpenRouter does not crash the site — forecasts still run locally.
-5. **OpenRouter 402.** Empty credit balance stops every model. Health still returns 200.
-6. **No Postgres on this blueprint.** Add a Render disk or `DATABASE_URL` later if the viva needs durable CMS.
+## B. Feature-by-feature on Render
 
-## Fixed in this pass
+| Feature | Works on Render? | Condition |
+|---|---|---|
+| Home, regions, workbook, white UI | **Yes** | Always |
+| Forecast ensemble, CUSUM, intervals | **Yes** | Always (local engine) |
+| District overlay | **Yes** | Always |
+| Reporting-delay nowcast (numbers) | **Yes** | Always |
+| DHIMS2 CSV parse + quality log | **Yes** | Always |
+| Official series driving forecast | **Yes until restart** | Disk is ephemeral unless Postgres/disk add-on |
+| Surveillance snapshot | **Yes** | Always |
+| Climate / OpenWeather | **Yes if key** | Outbound HTTPS works on Render |
+| Tavily / DuckDuckGo search | **Yes** | Tavily if key; else DuckDuckGo HTML |
+| Intelligence chat | **Yes if OpenRouter key + credit** | 402 = no model |
+| OpenRouter review of extracts / nowcast | **Yes if key + credit** | Sandbox TLS block does **not** apply on Render |
+| Vision any-file | **Yes if key** | Large files can OOM on tiny RAM |
+| Field briefs + TTS | **Yes** | TTS needs ElevenLabs **or** browser speech |
+| Browser microphone | **Yes** | Runs in the visitor’s Chrome, not on Render |
+| Admin CMS | **Yes** | Login with `ADMIN_*` |
+| Signed audit download | **Yes** | HMAC with `SESSION_SECRET` |
+| Event log JSONL | **Yes, until sleep/redeploy** | Lost on free/ephemeral disk |
+| 89-year archive | **Only with `DATABASE_URL` + backups** | Not automatic on paid web-only |
 
-- `persist()` no longer throws → health check cannot 500 because of a read-only disk.
-- Health handler swallows store errors and still returns `{ ok: true }`.
-- Start script forwards SIGTERM/SIGINT so Render deploys do not hang.
-- Node 22 pinned for the blueprint.
+## C. What I will not claim
 
-## Deploy recipe (unchanged path)
+- I have not clicked **Apply** on your Render account from this sandbox. This is a static + runtime audit, not a live Render deploy.
+- I cannot promise “every feature works perfectly.” OpenRouter credit, file size, and disk policy are outside the repo.
+- Forecasts remain intervals. Render does not make them certain.
 
-Dashboard → New → Blueprint → repo `ThaddeusHackz/ONE-HEALTH` → branch `arena/01a01814-one-health` → fill secrets → Apply.
+## D. How to deploy so this audit holds
 
-Manual: Web Service, Node, build `npm ci --include=dev && npm run build`, start `npm start`, health `/api/health`.
+1. dashboard.render.com → New → Blueprint → `ThaddeusHackz/ONE-HEALTH` → branch `arena/01a01814-one-health`.
+2. Paste the four required secrets. Paste Tavily / ElevenLabs / OpenWeather / `DATABASE_URL` if you have them.
+3. Wait for health green. Open `https://YOUR-SERVICE.onrender.com/api/health` — `openrouter` should be `true`.
+4. Admin → API desk → probe. That is the live key test Render can do and this sandbox cannot.

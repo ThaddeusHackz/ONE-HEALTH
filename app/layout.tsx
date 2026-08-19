@@ -4,6 +4,15 @@ import { Nav } from "@/components/Nav";
 import { SiteProvider } from "@/components/SiteProvider";
 import "./globals.css";
 
+function safeSiteUrl() {
+  const raw = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
+  try {
+    return new URL(raw || "https://one-health-ghana.onrender.com");
+  } catch {
+    return new URL("https://one-health-ghana.onrender.com");
+  }
+}
+
 export const metadata: Metadata = {
   title: {
     default: "ONE HEALTH GHANA — National Disease Forecasting",
@@ -11,7 +20,7 @@ export const metadata: Metadata = {
   },
   description:
     "Ghana Health Service One Health platform: probabilistic disease forecasts, document vision, voice, and early warning for Ghana only.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase: safeSiteUrl(),
   openGraph: {
     title: "ONE HEALTH GHANA",
     description: "National forecasting and early warning for Ghana Health Services.",

@@ -25,7 +25,7 @@ Never commit `.env.local`.
 | Build | `npm ci --include=dev && npm run build` |
 | Start | `npm start` (binds `0.0.0.0` and honours `PORT`) |
 | Health check | `/api/health` |
-| Instance | Free is fine for the viva; upgrade if the cold start is too slow |
+| Instance | **Starter** (blueprint default). Free spins down and wipes memory/disk. |
 
 Region **Frankfurt** is closest to Accra among Render’s common options.
 
@@ -47,6 +47,7 @@ ADMIN_EMAIL=admin@ghs.gov.gh
 ADMIN_PASSWORD=            # strong password for /admin
 ADMIN_NAME=GHS Administrator
 SESSION_SECRET=            # long random string
+DATABASE_URL=              # optional paid Postgres — only path that keeps events across restarts
 ```
 
 Save. Render redeploys.

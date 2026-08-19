@@ -1,9 +1,12 @@
+# Blueprint: one Node web service. Optional keys have empty defaults so Apply is not blocked.
+# Required to type in the dashboard: OPENROUTER_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
+
 services:
   - type: web
     name: one-health-ghana
     runtime: node
     region: frankfurt
-    plan: free
+    plan: starter
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
@@ -12,29 +15,29 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22.12.0"
+      - key: OPENROUTER_APP_TITLE
+        value: ONE HEALTH GHANA
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_HTTP_REFERER
         sync: false
-      - key: OPENROUTER_APP_TITLE
-        value: ONE HEALTH GHANA
-      - key: TAVILY_API_KEY
-        sync: false
-      - key: ELEVENLABS_API_KEY
-        sync: false
-      - key: ELEVENLABS_VOICE_ID
-        sync: false
-      - key: OPENWEATHER_API_KEY
-        sync: false
       - key: ADMIN_EMAIL
-        sync: false
+        value: admin@ghs.gov.gh
       - key: ADMIN_PASSWORD
         sync: false
       - key: ADMIN_NAME
-        sync: false
+        value: GHS Administrator
       - key: SESSION_SECRET
         sync: false
+      - key: TAVILY_API_KEY
+        value: ""
+      - key: ELEVENLABS_API_KEY
+        value: ""
+      - key: ELEVENLABS_VOICE_ID
+        value: ""
+      - key: OPENWEATHER_API_KEY
+        value: ""
       - key: DATABASE_URL
-        sync: false
+        value: ""

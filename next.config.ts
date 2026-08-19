@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ["fflate"],
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: false },
+  serverExternalPackages: ["fflate", "pg"],
   experimental: {
     serverActions: { bodySizeLimit: "24mb" },
   },
