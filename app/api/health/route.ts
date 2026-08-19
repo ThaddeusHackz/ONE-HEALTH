@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { elevenLabsKey, openRouterKey, openWeatherKey, tavilyKey } from "@/lib/env";
+import { elevenLabsKey, maskKey, openRouterKey, openWeatherKey, tavilyKey } from "@/lib/env";
 import { archiveStats } from "@/lib/archive";
+import { lastOpenRouterError } from "@/lib/openrouter";
 import { getDB } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ export function GET() {
     },
     capabilities: {
       openrouter: Boolean(openRouterKey()),
+      openrouterKey: maskKey(openRouterKey()),
+      lastOpenRouterError: lastOpenRouterError() || null,
       search: Boolean(tavilyKey()),
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),

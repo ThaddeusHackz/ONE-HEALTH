@@ -28,6 +28,7 @@ export default function IntelligencePage() {
   const [diseaseId, setDiseaseId] = useState("malaria");
   const [regionId, setRegionId] = useState("national");
   const [busy, setBusy] = useState(false);
+  const [keyNote, setKeyNote] = useState("");
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -35,6 +36,20 @@ export default function IntelligencePage() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((j) => {
+        const on = j.capabilities?.openrouter;
+        setKeyNote(
+          on
+            ? `OpenRouter key loaded (${j.capabilities.openrouterKey}). Fallback chain is live.`
+            : "OPENROUTER_API_KEY is missing on the server. Chat will use the Ghana offline briefing until Render has the key.",
+        );
+      })
+      .catch(() => setKeyNote("Could not read /api/health."));
+  }, []);
 
   async function send(text?: string) {
     const q = (text ?? input).trim();
@@ -126,6 +141,7 @@ export default function IntelligencePage() {
       <div className="mt-5">
         <Disclaimer compact />
       </div>
+      {keyNote && <p className="mt-3 text-sm text-muted">{keyNote}</p>}
 
       <div className="mt-6 flex flex-wrap gap-3">
         <select className="rounded-full border border-line bg-white px-3 py-2 text-sm" value={diseaseId} onChange={(e) => setDiseaseId(e.target.value)}>

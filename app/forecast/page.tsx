@@ -52,7 +52,7 @@ function ForecastInner() {
   useEffect(() => {
     void load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diseaseId, regionId, horizon]);
+  }, [diseaseId, regionId, districtId, horizon]);
 
   const chart = useMemo(() => {
     if (!data) return [];
@@ -156,8 +156,8 @@ function ForecastInner() {
             <Stat label="8-week mean" value={data.diagnostics.last8Mean.toFixed(0)} hint={`z = ${data.diagnostics.latestZ} · CUSUM ${data.diagnostics.latestCusum ?? 0} · ${data.diagnostics.source}`} />
             <Stat
               label="Next week ensemble"
-              value={Math.round(data.ensemble.points[0].point).toLocaleString()}
-              hint={`${Math.round(data.ensemble.points[0].low)}–${Math.round(data.ensemble.points[0].high)}`}
+              value={Math.round(data.ensemble.points[0]?.point || 0).toLocaleString()}
+              hint={`${Math.round(data.ensemble.points[0]?.low || 0)}–${Math.round(data.ensemble.points[0]?.high || 0)}`}
             />
             <Stat label="Test MAE (best family)" value={Math.min(...data.models.map((m) => m.mae)).toFixed(1)} hint="vs held-out 26 weeks" />
           </div>

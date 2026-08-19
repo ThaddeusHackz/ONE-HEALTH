@@ -1,9 +1,22 @@
 function read(name: string): string {
-  return (process.env[name] || "").trim();
+  let value = (process.env[name] || "").trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  if (/^bearer\s+/i.test(value)) value = value.replace(/^bearer\s+/i, "").trim();
+  return value;
 }
 
 export function openRouterKey(): string {
-  return read("OPENROUTER_API_KEY") || read("OPEN_ROUTER_API_KEY");
+  return (
+    read("OPENROUTER_API_KEY") ||
+    read("OPEN_ROUTER_API_KEY") ||
+    read("OPENROUTER_KEY") ||
+    read("OR_API_KEY")
+  );
 }
 
 export function openRouterReferer(): string {
@@ -16,6 +29,15 @@ export function openRouterReferer(): string {
 
 export function openRouterTitle(): string {
   return read("OPENROUTER_APP_TITLE") || "ONE HEALTH GHANA";
+}
+
+export function extraOpenRouterModels(): string[] {
+  const raw = read("OPENROUTER_MODELS");
+  if (!raw) return [];
+  return raw
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function tavilyKey(): string {
@@ -57,5 +79,5 @@ export function sessionSecret(): string {
 export function maskKey(value: string): string {
   if (!value) return "not set";
   if (value.length < 12) return "set ·••••";
-  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+  return `${value.slice(0, 8)}…${value.slice(-4)}`;
 }

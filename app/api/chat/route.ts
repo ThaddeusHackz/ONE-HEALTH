@@ -78,10 +78,11 @@ ${searchBlock}${forecastBlock}`,
     persistChat([...history, { role: "assistant", content: result.text }], result.model, redactions);
     return NextResponse.json({ text: result.text, model: result.model, citations, redactions });
   } catch (err) {
-    const text = offlineAnswer(last);
+    const reason = (err as Error).message;
+    const text = `${offlineAnswer(last)}\n\n_Live model note:_ ${reason}`;
     persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge", redactions);
     return NextResponse.json(
-      { error: (err as Error).message, text, model: "offline-ghana-knowledge", redactions },
+      { error: reason, text, model: "offline-ghana-knowledge", redactions },
       { status: 200 },
     );
   }

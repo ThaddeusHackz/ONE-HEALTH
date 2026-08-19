@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { REGIONS } from "@/lib/ghana";
-import { districtsFor, DISTRICTS } from "@/lib/districts";
+import { DISTRICTS } from "@/lib/districts";
 
 export const metadata = { title: "Regions" };
 
