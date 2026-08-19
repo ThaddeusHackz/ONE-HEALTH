@@ -33,10 +33,15 @@ export default function ClimatePage() {
 
   async function brief() {
     setSitrep("Drafting…");
-    const res = await fetch("/api/briefing");
-    const json = await res.json();
-    setSitrep(json.text || json.error || "No sitrep");
-    setModel(json.model || "");
+    try {
+      const res = await fetch("/api/briefing");
+      const json = await res.json();
+      setSitrep(json.text || json.error || "No sitrep");
+      setModel(json.model || "");
+    } catch (e) {
+      setSitrep((e as Error).message);
+      setModel("network");
+    }
   }
 
   return (

@@ -19,12 +19,18 @@ interface Snap {
 
 export default function SurveillancePage() {
   const [rows, setRows] = useState<Snap[]>([]);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/forecast?snapshot=1")
-      .then((r) => r.json())
-      .then((j) => setRows(j.snapshot || []))
-      .catch(() => setRows([]));
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "Snapshot failed");
+        setRows(j.snapshot || []);
+      })
+      .catch((e) => setErr((e as Error).message))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -52,6 +58,16 @@ export default function SurveillancePage() {
             </tr>
           </thead>
           <tbody>
+            {loading && (
+              <tr>
+                <td className="px-4 py-6 text-muted" colSpan={6}>Computing national z-scores…</td>
+              </tr>
+            )}
+            {err && (
+              <tr>
+                <td className="px-4 py-6 text-ghana-red" colSpan={6}>{err}</td>
+              </tr>
+            )}
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-line">
                 <td className="px-4 py-3 font-semibold">{r.name}</td>

@@ -43,7 +43,15 @@ export async function GET() {
           "X-Title": openRouterTitle(),
         },
         body: JSON.stringify({
-          models: ["google/gemini-2.5-flash", "openai/gpt-4.1-mini", "meta-llama/llama-3.3-70b-instruct:free"],
+          model: "openrouter/auto",
+          models: [
+            "google/gemini-2.5-flash",
+            "openai/gpt-4.1-mini",
+            "openai/gpt-4o-mini",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "openrouter/auto",
+          ],
+          provider: { allow_fallbacks: true },
           messages: [{ role: "user", content: "Reply with exactly OPENROUTER_OK" }],
           max_tokens: 16,
         }),
