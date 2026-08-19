@@ -6,7 +6,7 @@ services:
     name: one-health-ghana
     runtime: node
     region: frankfurt
-    plan: starter
+    plan: free
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health

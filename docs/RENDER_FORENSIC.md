@@ -21,7 +21,7 @@ This is the honest map. Nothing here is a guess about a feature we did not imple
 | Node 22 | Pass (`.node-version` + `NODE_VERSION`) | — |
 | SIGTERM on deploy | Pass | — |
 | Secrets not in git | Pass | — |
-| Blueprint plan | **starter** | Free web services spin down; starter stays warm |
+| Blueprint plan | **free** (as requested) | Spins down after idle; cold start 30–60s. Upgrade to starter when you want it always on. |
 
 Required dashboard values: `OPENROUTER_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL`.  
 Optional keys default to empty so **Apply is not blocked**.

@@ -25,7 +25,7 @@ Never commit `.env.local`.
 | Build | `npm ci --include=dev && npm run build` |
 | Start | `npm start` (binds `0.0.0.0` and honours `PORT`) |
 | Health check | `/api/health` |
-| Instance | **Starter** (blueprint default). Free spins down and wipes memory/disk. |
+| Instance | **Free** (blueprint default). Expect spin-down after idle and a cold start. Upgrade later if you need it always on. |
 
 Region **Frankfurt** is closest to Accra among Render’s common options.
 
