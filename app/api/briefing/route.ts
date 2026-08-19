@@ -5,6 +5,7 @@ import { ghanaWeather } from "@/lib/weather";
 import { nationalSnapshot } from "@/lib/forecast";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function GET() {
   const [weather, hits] = await Promise.all([ghanaWeather(), webSearch("Ghana Health Service outbreak OR malaria OR cholera", 5)]);

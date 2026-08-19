@@ -7,6 +7,7 @@ import { findOfficialSeries, recordAudit } from "@/lib/store";
 import { districtById } from "@/lib/districts";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 90;
 
 const FALLBACK: Record<string, string> = {
   en: "Field brief (offline). Check this week's line list, water points if enteric, and report missing weeks to the district. This is not outbreak confirmation.",

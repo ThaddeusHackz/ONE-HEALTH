@@ -8,6 +8,7 @@ import { redactMessages, redactText } from "@/lib/redact";
 import { recordAudit, saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {

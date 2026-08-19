@@ -32,42 +32,41 @@ export async function ghanaWeather(): Promise<{ ok: boolean; rows: CityWeather[]
   const key = openWeatherKey();
   if (!key) return { ok: false, rows: fallbackRows(), note: "OPENWEATHER_API_KEY not set — showing climatic placeholders." };
 
-  const rows: CityWeather[] = [];
-  let fail = 0;
-  for (const c of CITIES) {
-    try {
-      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(c.q)}&appid=${key}&units=metric`;
-      const res = await fetch(url, { cache: "no-store" });
-      const json = (await res.json()) as {
-        name?: string;
-        weather?: { description?: string }[];
-        main?: { temp?: number; feels_like?: number; humidity?: number; pressure?: number };
-        rain?: { "1h"?: number };
-        wind?: { speed?: number };
-        message?: string;
-      };
-      if (!res.ok) {
-        fail += 1;
-        continue;
+  const settled = await Promise.all(
+    CITIES.map(async (c) => {
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(c.q)}&appid=${key}&units=metric`;
+        const res = await fetch(url, { cache: "no-store" });
+        const json = (await res.json()) as {
+          name?: string;
+          weather?: { description?: string }[];
+          main?: { temp?: number; feels_like?: number; humidity?: number; pressure?: number };
+          rain?: { "1h"?: number };
+          wind?: { speed?: number };
+        };
+        if (!res.ok) return null;
+        const region = REGIONS.find((r) => r.id === c.regionId);
+        const row: CityWeather = {
+          regionId: c.regionId,
+          region: region?.name || c.q,
+          city: json.name || c.q,
+          temp: json.main?.temp ?? 0,
+          feels: json.main?.feels_like ?? 0,
+          humidity: json.main?.humidity ?? 0,
+          rain1h: json.rain?.["1h"] ?? 0,
+          wind: json.wind?.speed ?? 0,
+          description: json.weather?.[0]?.description || "",
+          pressure: json.main?.pressure ?? 0,
+          source: "openweather",
+        };
+        return row;
+      } catch {
+        return null;
       }
-      const region = REGIONS.find((r) => r.id === c.regionId);
-      rows.push({
-        regionId: c.regionId,
-        region: region?.name || c.q,
-        city: json.name || c.q,
-        temp: json.main?.temp ?? 0,
-        feels: json.main?.feels_like ?? 0,
-        humidity: json.main?.humidity ?? 0,
-        rain1h: json.rain?.["1h"] ?? 0,
-        wind: json.wind?.speed ?? 0,
-        description: json.weather?.[0]?.description || "",
-        pressure: json.main?.pressure ?? 0,
-        source: "openweather",
-      });
-    } catch {
-      fail += 1;
-    }
-  }
+    }),
+  );
+  const rows = settled.filter((r): r is CityWeather => Boolean(r));
+  const fail = CITIES.length - rows.length;
   if (!rows.length) return { ok: false, rows: fallbackRows(), note: `OpenWeather unreachable (${fail} failed).` };
   return { ok: true, rows, note: fail ? `${fail} cities failed` : "Live OpenWeather" };
 }

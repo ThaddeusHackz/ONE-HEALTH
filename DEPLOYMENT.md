@@ -7,7 +7,7 @@ You will create **one Web Service**. There is no separate frontend and backend �
 ```bash
 git add -A
 git commit -m "ONE HEALTH GHANA — forecast desk, vision, OpenRouter"
-git push origin arena/01a01814-one-health
+git push origin arena/01a0189f-one-health
 ```
 
 Never commit `.env.local`.
@@ -15,7 +15,7 @@ Never commit `.env.local`.
 ## 1. Create the service
 
 1. Sign in at [dashboard.render.com](https://dashboard.render.com) with GitHub.
-2. **New → Blueprint** and select `ThaddeusHackz/ONE-HEALTH`, branch `arena/01a01814-one-health`.
+2. **New → Blueprint** and select `ThaddeusHackz/ONE-HEALTH`, branch `arena/01a0189f-one-health`.
    - or **New → Web Service** → same repo/branch.
 3. If you do it manually:
 

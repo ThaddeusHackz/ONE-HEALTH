@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 
 const ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.tsv,.json,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.bmp,.xml,.html,image/*,application/pdf";
 
@@ -53,6 +54,9 @@ export default function VisionPage() {
       </p>
       <div className="mt-5">
         <Disclaimer />
+      </div>
+      <div className="mt-3">
+        <KeyStatus />
       </div>
       <img src="/images/vision-ingest.png" alt="Document ingestion" className="mt-8 w-full rounded-[28px] border border-line bg-white shadow-card" />
 

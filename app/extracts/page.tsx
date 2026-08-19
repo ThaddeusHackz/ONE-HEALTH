@@ -4,6 +4,7 @@ import { useState } from "react";
 import { DISEASES, REGIONS } from "@/lib/ghana";
 import { districtsFor } from "@/lib/districts";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 
 interface Quality {
   weeks: number;
@@ -51,6 +52,9 @@ export default function ExtractsPage() {
       </p>
       <div className="mt-5">
         <Disclaimer compact />
+      </div>
+      <div className="mt-3">
+        <KeyStatus compact />
       </div>
 
       <div className="mt-6 grid gap-3 md:grid-cols-3">

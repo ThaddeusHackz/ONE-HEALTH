@@ -33,7 +33,9 @@ The fallback report is correct in architecture:
 - 429 / 5xx on one vendor moves to the next; a **402 (OpenRouter balance empty)** stops everything.
 - Failed attempts are not billed.
 
-Implemented chain (chat): GPT-4.1 → Gemini 2.5 Pro → Claude Sonnet → Gemini Flash → DeepSeek → Llama 4 Maverick → Mistral Large.  
+**Live production finding (2026-08-19):** `GET https://one-health-ghana.onrender.com/api/diagnostics` returned OpenRouter `400` with `"'models' array must have 3 items or fewer."` The key itself was valid (`sk-or-v1…7d71`). Tavily and OpenWeather were already `200`. ElevenLabs `/v1/user` returned `401 missing_permissions` on a restricted key. Fix: chunk fallback into groups of three; probe `/v1/voices` for ElevenLabs.
+
+Implemented chain (chat): groups of three — GPT-4.1-mini → Gemini 2.5 Flash → GPT-4o-mini, then premium slugs, then `:free`, then `openrouter/auto`.   
 Vision chain starts on Gemini 2.5 Pro / GPT-4.1 / Claude.
 
 **We do not embed the key in the website JavaScript.** That would leak it to every browser. The key lives in Render environment variables and is read only in Route Handlers.

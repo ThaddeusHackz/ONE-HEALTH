@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Disclaimer } from "@/components/Disclaimer";
+import { KeyStatus } from "@/components/KeyStatus";
 import { Markdown } from "@/components/Markdown";
 
 interface Row {
@@ -53,6 +54,9 @@ export default function ClimatePage() {
       </p>
       <div className="mt-5">
         <Disclaimer compact />
+      </div>
+      <div className="mt-3">
+        <KeyStatus />
       </div>
       <p className="mt-4 text-sm text-muted">{note}</p>
       <div className="mt-6 overflow-hidden rounded-[28px] border border-line bg-white shadow-card">
