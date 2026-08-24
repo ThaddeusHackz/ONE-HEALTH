@@ -31,6 +31,8 @@ interface KeyStatus {
   search: boolean;
   voice: boolean;
   weather: boolean;
+  stockImages: boolean;
+  imageGen: boolean;
   lastOpenRouterError: string | null;
 }
 
@@ -69,6 +71,7 @@ export default function AgentPage() {
     return [
       { label: "OpenRouter brain", on: keys.openrouter, icon: Sparkles },
       { label: "Live web (Tavily)", on: keys.search, icon: Search },
+      { label: "Image gen (Gemini)", on: keys.imageGen, icon: ImageIcon },
       { label: "Voice (ElevenLabs)", on: keys.voice, icon: Radio },
       { label: "Climate (OpenWeather)", on: keys.weather, icon: Activity },
       { label: "Sandbox", on: true, icon: Terminal },
@@ -152,7 +155,8 @@ export default function AgentPage() {
               </div>
               {keys && !keys.openrouter && (
                 <p className="mt-2 rounded-xl bg-gold-soft px-2 py-1.5 text-[11px] text-ink">
-                  Add <span className="a-mono">OPENROUTER_API_KEY</span> on Render to switch on reasoning, research, vision and image generation.
+                  Add <span className="a-mono">OPENROUTER_API_KEY</span> on Render to switch on reasoning, research and vision;{" "}
+                  <span className="a-mono">GEMINI_API_KEY</span> switches on image generation.
                 </p>
               )}
             </div>

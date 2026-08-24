@@ -80,8 +80,26 @@ export function whisperKey(): string {
   return direct;
 }
 
-export function imageModels(): string[] {
-  const raw = first("OPENROUTER_IMAGE_MODELS", "OPENROUTER_IMAGE_MODEL");
+/**
+ * Gemini API key - used for image generation only.
+ * Reasoning, vision and search stay on OpenRouter/Tavily; do not route them here.
+ */
+export function geminiKey(): string {
+  const direct = first(
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_KEY",
+    "GOOGLE_GENAI_KEY",
+  );
+  // An OpenRouter key is not a Google key - never send it to Google.
+  if (direct.startsWith("sk-or-")) return "";
+  return direct;
+}
+
+/** Optional comma-separated Gemini image model slugs tried before the built-in chain. */
+export function geminiImageModels(): string[] {
+  const raw = first("GEMINI_IMAGE_MODELS", "GEMINI_IMAGE_MODEL");
   if (!raw) return [];
   return raw
     .split(/[,\n]/)

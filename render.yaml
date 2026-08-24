@@ -3,7 +3,8 @@
 # Optional dashboard secrets that light up the AI Agent tab:
 #   TAVILY_API_KEY (live web + deep research)  UNSPLASH_ACCESS_KEY (stock photos)
 #   ELEVENLABS_API_KEY (voice out)  OPENAI_API_KEY (Whisper voice in)
-#   OPENWEATHER_API_KEY (climate pillar)  OPENROUTER_IMAGE_MODELS (image chain)
+#   OPENWEATHER_API_KEY (climate pillar)  GEMINI_API_KEY (image generation)
+#   GEMINI_IMAGE_MODELS (image model chain)
 
 databases:
   - name: one-health-db
@@ -60,7 +61,9 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: OPENROUTER_IMAGE_MODELS
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_IMAGE_MODELS
         sync: false
       - key: AGENT_MAX_STEPS
         sync: false

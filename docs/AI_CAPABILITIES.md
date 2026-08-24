@@ -34,7 +34,7 @@ lib/agent/run.ts                    the agentic loop
 lib/agent/tools.ts                  22 tool declarations + executors + system prompt
 lib/agent/memory.ts                 facts, conversations, files, memory distillation
 lib/agent/web.ts                    Tavily + DuckDuckGo + page reader (SSRF-guarded)
-lib/agent/media.ts                  Unsplash search + OpenRouter image generation
+lib/agent/media.ts                  Unsplash search + Gemini image generation
 lib/agent/deep-research.ts          decompose → parallel search → read → synthesise
 lib/agent/compute.ts                deterministic expression engine (no eval)
 lib/openrouter.ts                   model chain, 3-slug chunking, streaming, tool calling
@@ -52,7 +52,7 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 | Read a page | `web_fetch` | none | always available (SSRF-guarded) |
 | Multi-step sourced research | `deep_research` | `OPENROUTER_API_KEY` (+ Tavily) | raw source list only |
 | Vision on any attachment | `vision_read` + inline image parts | `OPENROUTER_API_KEY` | attachments are ignored |
-| Generate new images | `image_generate` | `OPENROUTER_API_KEY` | clean failure message |
+| Generate new images | `image_generate` | `GEMINI_API_KEY` | clean failure message |
 | Real stock photography | `image_search` | `UNSPLASH_ACCESS_KEY` | Tavily image results |
 | Code sandbox (JS/HTML/CSS/SVG/JSON) | `sandbox_exec` | none | always available |
 | Python sandbox | `sandbox_exec` + Pyodide CDN | none (needs network) | clear error if CDN blocked |
@@ -154,15 +154,18 @@ filesystem.
 
 1. **No API key means no brain.** The loop, research, vision and image generation all
    need `OPENROUTER_API_KEY`. The local statistical desks do not.
-2. **Image generation is not free.** No OpenRouter image model carries a `:free` suffix,
-   so it draws on credit balance.
+2. **Image generation is a separate key.** It runs on the Gemini API, not OpenRouter, so
+   `GEMINI_API_KEY` must be set even when reasoning works. Gemini has its own free-tier
+   rate limits and its own billing.
 3. **Pyodide needs the CDN.** A locked-down browser or an offline client cannot run
    Python; JavaScript/HTML still run.
 4. **Memory recall is keyword-based**, not embedding-based. It is deterministic and
    free, and it will miss paraphrases.
 5. **The sandbox cannot reach the network.** By design — a dashboard built there must be
    self-contained or fetch through our own API from the parent page.
-6. **No video generation.** OpenRouter exposes `/videos` as an async job; not wired.
+6. **No video generation.** Not wired.
+8. **No Imagen.** Google shut the Imagen endpoints down on 2026-08-17, so the chain is
+   Gemini-native image models only.
 7. **No MCP / external connectors.** The tool surface is closed and auditable by design.
 
 ---

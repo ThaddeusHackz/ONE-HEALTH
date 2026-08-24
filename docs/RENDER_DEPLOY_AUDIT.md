@@ -68,7 +68,7 @@ instead of JSON. That is documented behaviour:
 | `deep_research` | **Yes** | OpenRouter + Tavily, both verified |
 | `vision_read` | **Yes** | vision models ride the same verified OpenRouter path |
 | `image_search` (Unsplash) | **Partial** | `UNSPLASH_ACCESS_KEY` is not set; falls back to Tavily image results, which are verified working |
-| `image_generate` | **Unverified** | Uses the verified OpenRouter key, but image generation draws on **credit balance** — no image model carries a `:free` suffix. Must be tested with `/api/diagnostics` → `image-generation` after deploy |
+| `image_generate` | **Needs `GEMINI_API_KEY`** | Image generation runs on the **Gemini API**, not OpenRouter. The key is not yet set on Render. Add it, then `/api/diagnostics` → `image-generation` reports how many Gemini image models the key can reach |
 | Sandbox (JS/HTML/CSS/SVG/JSON) | **Yes** | Runs entirely in the visitor's browser; the server is not involved |
 | Sandbox (Python) | **Yes, with a CDN** | Pyodide loads from jsDelivr in the browser; blocked only if the visitor's network blocks CDNs |
 | Voice in (Whisper) | **Partial** | `OPENAI_API_KEY` is not set → routes through OpenRouter `/audio/transcriptions` on the verified key; browser Web Speech is the guaranteed fallback |
@@ -148,7 +148,8 @@ agent self-test asserts `/ → /agent → /forecast`.
 | **750 instance hours/month** | Exhausting them suspends all free web services until the next month | Spun-down services don't consume hours, so a single service is normally fine |
 | **Service-initiated traffic** | "Render may suspend a Free web service that initiates an uncommonly high volume of traffic over the public internet" — external API calls are named as an example | The agent calls OpenRouter/Tavily per turn. Normal desk use is fine; a scripted hammering of the agent is not |
 | **Filesystem is ephemeral** | All local files are lost on every spin-down and redeploy | Already handled: Postgres is the only trusted store; `data/db.json` is a cache |
-| **Image generation cost** | No OpenRouter image model has a `:free` suffix; generation draws on credit balance | `image_generate` fails with a readable message rather than hanging. Confirm with `/api/diagnostics` after deploy |
+| **Image generation is a second key** | Images run on the Gemini API, so `GEMINI_API_KEY` must be set even when OpenRouter works | `image_generate` fails with a readable message rather than hanging. Gemini has its own free-tier rate limits and billing, independent of OpenRouter |
+| **Imagen is dead** | Google shut the Imagen `:predict` endpoints down on 2026-08-17 | The chain is Gemini-native only; a self-test asserts no Imagen slug is present |
 | **Region latency** | Service is in `frankfurt` — the closest free region to Ghana | Acceptable; OpenRouter calls dominate latency anyway |
 | **No request timeout documented** | Render documents no fixed timeout for web services and none for WebSockets; it does not publish an SSE-specific guarantee | The agent already streams continuously (tokens plus tool events), which keeps the connection active rather than idle. **Long multi-step runs should be verified on the host after deploy** — this is the one thing I could not measure |
 
@@ -162,9 +163,10 @@ agent self-test asserts `/ → /agent → /forecast`.
 3. `GET /api/config` → nav must read `/ → /agent → /forecast`.
 4. `GET /api/diagnostics` → seven checks; `unsplash` and `whisper` will read "not set"
    until those keys are added, `image-generation` reports how many image models the
-   account can reach.
-5. Optional dashboard keys: `UNSPLASH_ACCESS_KEY`, `OPENAI_API_KEY`,
-   `OPENROUTER_IMAGE_MODELS`, `AGENT_MAX_STEPS`. Adding them needs no code change.
+   account can reach, and `image-generation` confirms the Gemini chain.
+5. Optional dashboard keys: `GEMINI_API_KEY` (required for image generation),
+   `GEMINI_IMAGE_MODELS`, `UNSPLASH_ACCESS_KEY`, `OPENAI_API_KEY`, `AGENT_MAX_STEPS`.
+   Adding them needs no code change.
 6. Send one agent message and confirm tokens stream progressively (not one late block).
 7. Ask it to build an HTML file and confirm the sandbox runs it and the model reads the
    result back.
@@ -174,8 +176,10 @@ agent self-test asserts `/ → /agent → /forecast`.
 
 ## 6. Test coverage added by this audit
 
-`npm run selftest:agent` — 29 assertions (5 new for Render hardening: snapshot trimming,
-store caps, pool configuration, compression disabled).
+`npm run selftest:agent` — 33 assertions (5 for Render hardening: snapshot trimming, store
+caps, pool configuration, compression disabled; 5 for the Gemini image path: clean failure
+without a key, no Imagen in the chain, camelCase/snake_case response parsing, no OpenRouter
+image endpoint anywhere in the repo, key-resolver guards).
 `npm run selftest` — 25 HTTP checks (3 new: 413 on oversized body, 400 on malformed JSON,
 SSE not compressed).
-`npm test` runs both. All 54 passed against a production build on Node 22.22.3.
+`npm test` runs both. 33 + 25 = 58 passed against a production build on Node 22.22.3.

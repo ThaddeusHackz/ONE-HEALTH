@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { generateImage, IMAGE_MODEL_CHAIN, unsplashSearch } from "@/lib/agent/media";
-import { openRouterConfigured } from "@/lib/openrouter";
+import { GEMINI_IMAGE_MODEL_CHAIN, generateImage, unsplashSearch } from "@/lib/agent/media";
+import { geminiKey } from "@/lib/env";
 import { recordAudit } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +8,9 @@ export const maxDuration = 180;
 
 export function GET() {
   return NextResponse.json({
-    configured: openRouterConfigured(),
-    imageModels: IMAGE_MODEL_CHAIN,
+    configured: Boolean(geminiKey()),
+    engine: "gemini",
+    imageModels: GEMINI_IMAGE_MODEL_CHAIN,
   });
 }
 

@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { elevenLabsKey, maskKey, openRouterKey, openWeatherKey, tavilyKey, unsplashKey, whisperKey } from "@/lib/env";
+import {
+  elevenLabsKey,
+  geminiKey,
+  maskKey,
+  openRouterKey,
+  openWeatherKey,
+  tavilyKey,
+  unsplashKey,
+  whisperKey,
+} from "@/lib/env";
 import { TOOLS } from "@/lib/agent/tools";
 import { archiveStats } from "@/lib/archive";
 import { lastOpenRouterError } from "@/lib/openrouter";
@@ -48,7 +57,9 @@ export function GET() {
       search: Boolean(tavilyKey()),
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
-      images: Boolean(unsplashKey()),
+      stockImages: Boolean(unsplashKey()),
+      imageGen: Boolean(geminiKey()),
+      imageGenEngine: geminiKey() ? "gemini" : "not configured",
       whisper: Boolean(whisperKey()),
       agentTools: TOOLS.length,
       freeModelFallback: true,

@@ -150,13 +150,13 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "image_generate",
     description:
-      "Generate a brand new AI image from a text description (charts of nothing, illustrations, posters, mockups, infographics). Returns a base64 image. Never use real patient photos as input.",
+      "Generate a brand new AI image from a text description (illustrations, posters, mockups, infographics) using the Gemini image models. Returns a base64 image. Never use real patient photos as input.",
     parameters: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Detailed visual description" },
         aspect_ratio: { type: "string", description: "e.g. 1:1, 16:9, 4:3, 3:4" },
-        model: { type: "string", description: "Optional image model slug override" },
+        model: { type: "string", description: "Optional Gemini image model override, e.g. gemini-2.5-flash-image" },
       },
       required: ["prompt"],
     },
@@ -169,8 +169,8 @@ export const TOOLS: ToolDefinition[] = [
         });
         recordAudit({ actor: "agent", action: "image_generate", model: image.model, redactions: 0, detail: String(args.prompt).slice(0, 80) });
         return ok(
-          `Generated an image with ${image.model} (${Math.round(image.bytes / 1024)} KB${
-            image.cost ? `, $${image.cost.toFixed(4)}` : ""
+          `Generated an image with ${image.model} on the Gemini API (${Math.round(image.bytes / 1024)} KB${
+            image.note ? `, ${image.note}` : ""
           }). It is rendered in the conversation. Describe it briefly; do not repeat base64.`,
           [{ type: "image", image: { dataUrl: image.dataUrl, prompt: image.prompt, model: image.model } }],
         );

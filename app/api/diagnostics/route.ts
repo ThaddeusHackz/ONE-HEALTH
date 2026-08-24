@@ -11,7 +11,8 @@ import {
   unsplashKey,
   whisperKey,
 } from "@/lib/env";
-import { IMAGE_MODEL_CHAIN } from "@/lib/agent/media";
+import { GEMINI_IMAGE_MODEL_CHAIN, listGeminiModels } from "@/lib/agent/media";
+import { geminiKey } from "@/lib/env";
 import { lastOpenRouterError, MAX_MODELS_PER_REQUEST } from "@/lib/openrouter";
 
 export const dynamic = "force-dynamic";
@@ -164,24 +165,28 @@ export async function GET() {
   );
 
   checks.push(
-    await probe("image-generation", maskKey(openRouterKey()), async () => {
-      const key = openRouterKey();
+    await probe("image-generation", maskKey(geminiKey()), async () => {
+      const key = geminiKey();
       if (!key) {
-        return { id: "image-generation", ok: false, status: 0, detail: "missing OpenRouter key", masked: "not set" };
+        return {
+          id: "image-generation",
+          ok: false,
+          status: 0,
+          detail: "missing GEMINI_API_KEY - image generation is Gemini-only",
+          masked: "not set",
+        };
       }
-      const res = await fetch("https://openrouter.ai/api/v1/images/models", {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      const json = (await res.json()) as { data?: { id?: string }[] };
-      const available = (json.data || []).map((m) => m.id || "");
-      const overlap = IMAGE_MODEL_CHAIN.filter((m) => available.includes(m));
+      const { ok, models, error } = await listGeminiModels();
+      const overlap = GEMINI_IMAGE_MODEL_CHAIN.filter((m) => models.includes(m));
       return {
         id: "image-generation",
-        ok: res.ok,
-        status: res.status,
-        detail: res.ok
-          ? `${available.length} image models on the account; ${overlap.length || 0} of our chain available`
-          : "image model list unavailable",
+        ok: ok && overlap.length > 0,
+        status: ok ? 200 : 0,
+        detail: ok
+          ? `${models.length} image-output models on the key; ${overlap.length} of our chain reachable${
+              overlap.length ? ` (${overlap[0]})` : ""
+            }`
+          : error || "no image-output models reachable with this key",
         masked: maskKey(key),
       };
     }),

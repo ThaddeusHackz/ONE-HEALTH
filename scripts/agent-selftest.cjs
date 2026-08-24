@@ -238,10 +238,70 @@ function assert(cond, message) {
     return now.output.slice(0, 60);
   });
 
-  await checkAsync("tools: image_generate fails cleanly without a key", async () => {
+  await checkAsync("tools: image_generate fails cleanly without a Gemini key", async () => {
     const out = await call("image_generate", { prompt: "a clinic in Kumasi" });
-    assert(!out.ok && /OPENROUTER_API_KEY|failed/i.test(out.output), out.output);
-    return out.output.slice(0, 70);
+    assert(!out.ok, "should fail without a key");
+    assert(/GEMINI_API_KEY/i.test(out.output), `should name Gemini: ${out.output}`);
+    assert(!/openrouter/i.test(out.output), "must not mention OpenRouter");
+    return out.output.slice(0, 74);
+  });
+
+  check("images: Gemini chain excludes the retired Imagen endpoints", () => {
+    const media = require(path.join(compiled, "agent/media.js"));
+    const chain = media.GEMINI_IMAGE_MODEL_CHAIN;
+    assert(chain.length >= 3, "chain too short");
+    assert(chain.every((m) => /^gemini-/.test(m)), `non-Gemini slug: ${chain.join(", ")}`);
+    assert(!chain.some((m) => /imagen/i.test(m)), "Imagen shut down 2026-08-17 - must not be called");
+    return chain.join(", ");
+  });
+
+  check("images: response parser handles camelCase and snake_case parts", () => {
+    const media = require(path.join(compiled, "agent/media.js"));
+    const camel = media.extractGeminiImage({
+      candidates: [{ content: { parts: [{ text: "here" }, { inlineData: { mimeType: "image/png", data: "aGVsbG8=" } }] } }],
+    });
+    assert(camel && camel.b64 === "aGVsbG8=" && camel.mime === "image/png", JSON.stringify(camel));
+    const snake = media.extractGeminiImage({
+      candidates: [{ content: { parts: [{ inline_data: { mime_type: "image/jpeg", data: "d29ybGQ=" } }] } }],
+    });
+    assert(snake && snake.b64 === "d29ybGQ=" && snake.mime === "image/jpeg", JSON.stringify(snake));
+    const none = media.extractGeminiImage({ candidates: [{ content: { parts: [{ text: "refused" }] } }] });
+    assert(none === null, "should report no image");
+    const blocked = media.geminiFailure({ promptFeedback: { blockReason: "SAFETY" } }, 200);
+    assert(/SAFETY/.test(blocked), blocked);
+    return "inlineData + inline_data + blocked-prompt all parsed";
+  });
+
+  check("images: nothing in the codebase calls the OpenRouter image API", () => {
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx|yaml|example)$/.test(entry.name)) {
+          const text = fs.readFileSync(full, "utf8");
+          if (/openrouter\.ai\/api\/v1\/images/.test(text) || /OPENROUTER_IMAGE_MODELS/.test(text)) {
+            offenders.push(path.relative(ROOT, full));
+          }
+        }
+      }
+    };
+    walk(path.join(ROOT, "lib"));
+    walk(path.join(ROOT, "app"));
+    walk(path.join(ROOT, "components"));
+    offenders.push(...[/OPENROUTER_IMAGE_MODELS/.test(fs.readFileSync(path.join(ROOT, "render.yaml"), "utf8")) ? "render.yaml" : ""]);
+    offenders.push(...[/OPENROUTER_IMAGE_MODELS/.test(fs.readFileSync(path.join(ROOT, ".env.example"), "utf8")) ? ".env.example" : ""]);
+    const real = offenders.filter(Boolean);
+    assert(real.length === 0, `still referenced in: ${real.join(", ")}`);
+    return "image generation is Gemini-only";
+  });
+
+  check("images: the Gemini key resolver refuses an OpenRouter key", () => {
+    const envSrc = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
+    assert(/GEMINI_API_KEY/.test(envSrc), "no GEMINI_API_KEY alias");
+    assert(/sk-or-/.test(envSrc) && /geminiKey/.test(envSrc), "missing sk-or guard on geminiKey");
+    return "aliases + sk-or guard present";
   });
 
   await checkAsync("tools: vision_read refuses to invent without attachments", async () => {

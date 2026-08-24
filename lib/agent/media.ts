@@ -1,4 +1,4 @@
-import { imageModels, openRouterKey, openRouterReferer, openRouterTitle, unsplashKey } from "@/lib/env";
+import { geminiImageModels, geminiKey, unsplashKey } from "@/lib/env";
 
 /* ------------------------------------------------------------------ *
  * Stock imagery - Unsplash first, Tavily image results as fallback.
@@ -81,28 +81,91 @@ export async function unsplashSearch(query: string, count = 6): Promise<{ images
 }
 
 /* ------------------------------------------------------------------ *
- * AI image generation - OpenRouter Unified Image API
- *   POST /api/v1/images  ->  { data: [{ b64_json }], usage }
- * Fallback: chat completions with modalities:["image","text"] for models that
- * still return images inside message.images[].
+ * AI image generation - Gemini API only.
+ *
+ *   POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+ *   header  x-goog-api-key: <key>
+ *   body    { contents:[{role:"user",parts:[{text},{inline_data?}]}],
+ *             generationConfig:{ responseModalities:["TEXT","IMAGE"], ... } }
+ *   image   candidates[0].content.parts[].inlineData.data  (base64)
+ *
+ * REST responses use snake_case (`inline_data`) and the SDK/JSON-mapped shape
+ * uses camelCase (`inlineData`); both are handled below.
+ *
+ * Imagen is deliberately NOT in the chain: Google shut the Imagen endpoints
+ * down on 2026-08-17, so calling :predict would only produce dead-model errors.
  * ------------------------------------------------------------------ */
 
-export const IMAGE_MODEL_CHAIN = [
-  "google/gemini-2.5-flash-image",
-  "bytedance-seed/seedream-4.5",
-  "openai/gpt-image-1",
-  "black-forest-labs/flux.2-flex",
-  "google/gemini-3-pro-image-preview",
-  "qwen/qwen-image",
-  "recraftai/recraft-v3",
+export const GEMINI_IMAGE_MODEL_CHAIN = [
+  "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image",
+  "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-image-preview",
+  "gemini-2.5-flash-image-preview",
 ];
+
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export interface GeneratedImage {
   dataUrl: string;
   model: string;
   prompt: string;
   bytes: number;
-  cost?: number;
+  note?: string;
+}
+
+interface GeminiPart {
+  text?: string;
+  inlineData?: { mimeType?: string; data?: string };
+  inline_data?: { mime_type?: string; data?: string };
+}
+
+interface GeminiResponse {
+  candidates?: {
+    content?: { parts?: GeminiPart[] };
+    finishReason?: string;
+  }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { message?: string; status?: string; code?: number };
+}
+
+/**
+ * Pull the first image out of a Gemini generateContent response.
+ * Exported so the parser is unit-testable without a network call.
+ */
+export function extractGeminiImage(json: GeminiResponse): { b64: string; mime: string } | null {
+  const parts = json.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    const camel = part.inlineData;
+    const snake = part.inline_data;
+    const data = camel?.data || snake?.data;
+    if (data) return { b64: data, mime: camel?.mimeType || snake?.mime_type || "image/png" };
+  }
+  return null;
+}
+
+/** Reads the human-readable reason a Gemini image request failed. */
+export function geminiFailure(json: GeminiResponse, status: number): string {
+  if (json.error?.message) return `${status}: ${json.error.message}`;
+  const block = json.promptFeedback?.blockReason;
+  if (block) return `${status}: prompt blocked (${block})`;
+  const finish = json.candidates?.[0]?.finishReason;
+  if (finish && finish !== "STOP") return `${status}: finished without an image (${finish})`;
+  return `${status}: no image data in response`;
+}
+
+function splitDataUrl(reference: string): { mime: string; data: string } | null {
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(reference);
+  if (!match) return null;
+  return { mime: match[1], data: match[2] };
+}
+
+function aspectConfig(aspectRatio?: string): Record<string, unknown> | null {
+  if (!aspectRatio) return null;
+  return {
+    responseModalities: ["TEXT", "IMAGE"],
+    responseFormat: { image: { aspectRatio } },
+  };
 }
 
 export async function generateImage(opts: {
@@ -112,123 +175,115 @@ export async function generateImage(opts: {
   size?: string;
   reference?: string;
 }): Promise<GeneratedImage> {
-  const key = openRouterKey();
-  if (!key) throw new Error("OPENROUTER_API_KEY is not set - image generation needs it.");
+  const key = geminiKey();
+  if (!key) {
+    throw new Error(
+      "GEMINI_API_KEY is not set - image generation runs on the Gemini API. Add it on Render (dashboard → Environment).",
+    );
+  }
 
-  const chain = [opts.model, ...imageModels(), ...IMAGE_MODEL_CHAIN]
+  const chain = [opts.model, ...geminiImageModels(), ...GEMINI_IMAGE_MODEL_CHAIN]
     .filter((m): m is string => Boolean(m))
     .filter((m, i, arr) => arr.indexOf(m) === i);
+
+  const prompt = opts.prompt.slice(0, 4000);
+  const reference = opts.reference ? splitDataUrl(opts.reference) : null;
+  const parts: GeminiPart[] = reference
+    ? [
+        { text: prompt },
+        { inline_data: { mime_type: reference.mime, data: reference.data } },
+      ]
+    : [{ text: prompt }];
 
   const errors: string[] = [];
 
   for (const model of chain) {
-    try {
-      const body: Record<string, unknown> = { model, prompt: opts.prompt.slice(0, 2000) };
-      if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
-      if (opts.size) body.size = opts.size;
-      if (opts.reference) {
-        body.input_references = [{ type: "image_url", image_url: { url: opts.reference } }];
-      }
+    // Aspect-ratio support differs across Gemini image model generations, so a
+    // rejection of the config is retried once without it rather than failing.
+    const attempts: Record<string, unknown>[] = [
+      { contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } },
+    ];
+    const withAspect = aspectConfig(opts.aspectRatio);
+    if (withAspect) {
+      attempts.unshift({ contents: [{ role: "user", parts }], generationConfig: withAspect });
+    }
 
-      const res = await fetch("https://openrouter.ai/api/v1/images", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": openRouterReferer(),
-          "X-Title": openRouterTitle(),
-        },
-        body: JSON.stringify(body),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        data?: { b64_json?: string; url?: string }[];
-        usage?: { cost?: number };
-        error?: { message?: string };
-      };
+    for (const body of attempts) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 120000);
+        const res = await fetch(`${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
 
-      if (res.ok && json.data?.length) {
-        const first = json.data[0];
-        const b64 = first.b64_json;
-        if (b64) {
-          const buf = Buffer.from(b64, "base64");
-          return {
-            dataUrl: `data:image/png;base64,${b64}`,
-            model,
-            prompt: opts.prompt,
-            bytes: buf.length,
-            cost: json.usage?.cost,
-          };
-        }
-        if (first.url) {
-          const remote = await fetch(first.url);
-          if (remote.ok) {
-            const arr = new Uint8Array(await remote.arrayBuffer());
+        const json = (await res.json().catch(() => ({}))) as GeminiResponse;
+
+        if (res.ok) {
+          const image = extractGeminiImage(json);
+          if (image) {
+            const buf = Buffer.from(image.b64, "base64");
+            const mime = image.mime.startsWith("image/") ? image.mime : "image/png";
             return {
-              dataUrl: `data:image/png;base64,${Buffer.from(arr).toString("base64")}`,
+              dataUrl: `data:${mime};base64,${image.b64}`,
               model,
-              prompt: opts.prompt,
-              bytes: arr.length,
-              cost: json.usage?.cost,
+              prompt,
+              bytes: buf.length,
+              note: opts.aspectRatio ? `aspect ${opts.aspectRatio}` : undefined,
             };
           }
+          errors.push(`${model}: ${geminiFailure(json, res.status)}`);
+        } else {
+          const message = geminiFailure(json, res.status);
+          errors.push(`${model}: ${message}`);
+          // A malformed generationConfig is worth one retry without it; anything
+          // else (auth, quota, model gone) should not burn the whole chain.
+          const configRejected =
+            res.status === 400 && /responseFormat|aspectRatio|imageConfig|generationConfig|Invalid JSON/i.test(message);
+          if (!configRejected) {
+            if (res.status === 401 || res.status === 403) {
+              throw new Error(`Gemini rejected the API key (${message}). Check GEMINI_API_KEY on Render.`);
+            }
+            if (res.status === 429) {
+              errors.push(`${model}: rate limited - trying the next model`);
+            }
+            break; // next model
+          }
         }
+      } catch (err) {
+        const message = (err as Error).message;
+        if (/rejected the API key/i.test(message)) throw err;
+        errors.push(`${model}: ${message}`);
+        break; // network/timeout - try the next model
       }
-      errors.push(`${model}: ${json.error?.message || `HTTP ${res.status}`}`);
-      if (res.status === 401 || res.status === 402) break;
-    } catch (err) {
-      errors.push(`${model}: ${(err as Error).message}`);
     }
   }
 
-  // Chat-completions image fallback (some providers only expose images there).
-  try {
-    const chatImage = await generateViaChat({ prompt: opts.prompt, aspectRatio: opts.aspectRatio });
-    if (chatImage) return chatImage;
-  } catch (err) {
-    errors.push(`chat-modalities: ${(err as Error).message}`);
-  }
-
-  throw new Error(`Image generation failed. ${errors.slice(0, 4).join(" | ")}`);
+  throw new Error(`Gemini image generation failed. ${errors.slice(0, 4).join(" | ")}`);
 }
 
-async function generateViaChat(opts: {
-  prompt: string;
-  aspectRatio?: string;
-}): Promise<GeneratedImage | null> {
-  const key = openRouterKey();
-  const models = ["google/gemini-2.5-flash-image", "openai/gpt-4o", "black-forest-labs/flux.2-flex"];
-  for (const model of models) {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": openRouterReferer(),
-        "X-Title": openRouterTitle(),
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: opts.prompt }],
-        modalities: ["image", "text"],
-        ...(opts.aspectRatio ? { aspect_ratio: opts.aspectRatio } : {}),
-      }),
+/** Lists the models a Gemini key can reach - used by /api/diagnostics. */
+export async function listGeminiModels(): Promise<{ ok: boolean; models: string[]; error: string }> {
+  const key = geminiKey();
+  if (!key) return { ok: false, models: [], error: "GEMINI_API_KEY not set" };
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+      headers: { "x-goog-api-key": key },
     });
-    if (!res.ok) continue;
     const json = (await res.json()) as {
-      choices?: { message?: { images?: { image_url?: { url?: string }; type?: string }[] } }[];
-      model?: string;
+      models?: { name?: string; outputModalities?: string[] }[];
+      error?: { message?: string };
     };
-    const images = json.choices?.[0]?.message?.images || [];
-    const url = images.find((i) => i.image_url?.url)?.image_url?.url;
-    if (url?.startsWith("data:")) {
-      const b64 = url.slice(url.indexOf(",") + 1);
-      return {
-        dataUrl: url,
-        model: json.model || model,
-        prompt: opts.prompt,
-        bytes: Math.floor((b64.length * 3) / 4),
-      };
-    }
+    if (!res.ok) return { ok: false, models: [], error: json.error?.message || `HTTP ${res.status}` };
+    const models = (json.models || [])
+      .filter((m) => (m.outputModalities || []).some((o) => /image/i.test(o)))
+      .map((m) => (m.name || "").replace(/^models\//, ""))
+      .filter(Boolean);
+    return { ok: true, models, error: "" };
+  } catch (err) {
+    return { ok: false, models: [], error: (err as Error).message };
   }
-  return null;
 }

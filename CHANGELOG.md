@@ -41,6 +41,35 @@ with the existing multi-model fallback, and specialised for Ghana One Health.
 - [x] Workbook module 21 documents the agent; `docs/AI_CAPABILITIES.md` is now the agent dossier; `docs/AGENT_FORENSIC.md` records the external scan and the API contracts
 - [x] `scripts/agent-selftest.cjs` compiles `lib/` with the project's own tsc and drives the real tool executors, memory and store (24 assertions); `scripts/selftest.cjs` gains 9 HTTP checks (22 total); `npm test` runs both
 
+## 2026-08-24 image generation moved to the Gemini API (this pass)
+
+Image generation no longer uses the OpenRouter Image API. Everything else - reasoning,
+streaming, tool calling, vision, search, TTS, Whisper - is untouched.
+
+- [x] `lib/agent/media.ts` rewritten for `POST /v1beta/models/{model}:generateContent` with
+      `x-goog-api-key`, `responseModalities:["TEXT","IMAGE"]`, and image editing via an
+      `inline_data` reference part
+- [x] `extractGeminiImage()` accepts both `inlineData` (camel) and `inline_data` (snake) and
+      is unit-tested for both, plus blocked-prompt and no-image responses
+- [x] Chain is Gemini-native only: `gemini-2.5-flash-image`, `gemini-3.1-flash-image`,
+      `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`,
+      `gemini-2.5-flash-image-preview` - **Imagen is excluded because Google shut those
+      endpoints down on 2026-08-17**
+- [x] Aspect-ratio config differs per generation, so a 400 naming `responseFormat` /
+      `aspectRatio` / `imageConfig` retries once without it; 401/403 stops with a readable
+      key message; 429 advances to the next model
+- [x] `geminiKey()` accepts `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+      `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_KEY`, `GOOGLE_GENAI_KEY` and refuses an
+      `sk-or-` key so an OpenRouter key is never sent to Google
+- [x] `/api/agent/images` reports `engine: "gemini"` and the Gemini chain;
+      `/api/diagnostics` probes the Gemini model list and reports which of the chain the key
+      can reach; `/api/health` reports `imageGen` / `imageGenEngine` / `stockImages`
+- [x] `.env.example` and `render.yaml`: `GEMINI_API_KEY` + `GEMINI_IMAGE_MODELS` replace
+      `OPENROUTER_IMAGE_MODELS`
+- [x] Agent UI gains an "Image gen (Gemini)" key chip; workbook module 21 corrected
+- [x] Four new self-tests, including a repo-wide assertion that nothing still calls the
+      OpenRouter image endpoint
+
 ### Not shipped, deliberately
 - [ ] Host-side shell / computer use / MCP connectors / scheduled tasks / video generation (reasons in `docs/AGENT_FORENSIC.md` §7)
 

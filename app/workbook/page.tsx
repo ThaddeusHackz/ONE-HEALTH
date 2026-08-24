@@ -715,7 +715,7 @@ export default function WorkbookPage() {
           />
           <Card
             title="Images"
-            body="New imagery through the OpenRouter Image API (base64 in, no third-party account), plus real Unsplash stock photography for reports and slides."
+            body="New imagery through the Gemini image models on a Gemini API key, plus real Unsplash stock photography for reports and slides. Reasoning, research and vision stay on the OpenRouter fallback chain."
           />
           <Card
             title="In-built sandbox"

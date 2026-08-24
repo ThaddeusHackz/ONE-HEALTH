@@ -39,7 +39,7 @@ model selector, sidebar with Projects and Settings, conversation list, inline ci
 | Deep Research (multi-step, sourced report) | `deep_research` (decompose → parallel search → read pages → cited brief) |
 | Canvas / side-by-side artefact editing | Workspace panel: Preview / Code / Files tabs |
 | Code Interpreter (Python sandbox) | `sandbox_exec` with Pyodide in an opaque-origin iframe |
-| Image generation | `image_generate` via the OpenRouter Image API |
+| Image generation | `image_generate` via the Gemini image models |
 | Image input / screenshot reading | attachments + `vision_read` |
 | Advanced Voice | MediaRecorder → Whisper (3-tier) in, ElevenLabs/OpenRouter/browser out |
 | Memory across conversations | `lib/agent/memory.ts` + auto-distillation |
@@ -111,6 +111,24 @@ These are the shapes the code is written to.
 
 Implemented in `lib/agent/media.ts`, `lib/openrouter.ts`, `app/api/tts/route.ts`,
 `app/api/transcribe/route.ts`.
+
+### Gemini (image generation only)
+`POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`,
+auth header `x-goog-api-key`. Request:
+`{contents:[{role:"user",parts:[{text},{inline_data?}]}], generationConfig:{responseModalities:["TEXT","IMAGE"], responseFormat:{image:{aspectRatio}}}}`.
+Response: `candidates[0].content.parts[].inlineData.data` (base64). REST payloads may use
+either `inlineData` or `inline_data`, so the parser in `lib/agent/media.ts` accepts both
+(`extractGeminiImage`, unit-tested for both shapes).
+
+**Imagen is deliberately excluded.** Google shut the Imagen `:predict` endpoints down on
+**2026-08-17**, so including them would only produce dead-model errors. The chain is
+Gemini-native only: `gemini-2.5-flash-image`, `gemini-3.1-flash-image`,
+`gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`,
+`gemini-2.5-flash-image-preview`, overridable with `GEMINI_IMAGE_MODELS`.
+
+Aspect-ratio config differs across model generations, so a 400 that mentions
+`responseFormat`/`aspectRatio`/`imageConfig` is retried once without it. 401/403 stops the
+chain with a readable key message; 429 moves to the next model.
 
 ### Tavily
 `POST https://api.tavily.com/search`, auth via `Authorization: Bearer` **or** `api_key` in
