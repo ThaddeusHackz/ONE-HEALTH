@@ -97,6 +97,8 @@ export function useAgent() {
   const sandboxRef = useRef<SandboxHandle | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingCallRef = useRef<PendingClientCall | null>(null);
+  /** Assistant text streamed so far this turn, so a sandbox resume can carry it. */
+  const priorTextRef = useRef<string>("");
   const settingsRef = useRef<AgentSettings>({ mode: "chat", tools: [], model: "", temperature: 0.4, reasoning: false });
   const conversationRef = useRef<string | null>(null);
   const messagesRef = useRef<UiMessage[]>([]);
@@ -214,7 +216,7 @@ export function useAgent() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let finalText = "";
+    let finalText = priorTextRef.current;
     let finalModel = "";
     let pending: PendingAsk | null = null;
     let newConversationId = "";
@@ -249,6 +251,7 @@ export function useAgent() {
         switch (event) {
           case "delta":
             finalText += String(parsed.text || "");
+            priorTextRef.current = finalText;
             setStreaming((s) => ({ text: (s?.text || "") + String(parsed.text || ""), reasoning: s?.reasoning || "" }));
             break;
           case "reasoning":
@@ -340,15 +343,14 @@ export function useAgent() {
 
       let output: string;
       const sandbox = sandboxRef.current;
+      const filename = typeof call.payload.filename === "string" ? call.payload.filename.trim() : "";
+      const language = String(call.payload.language || "javascript") as SandboxLanguage;
+      const code = String(call.payload.code || "");
       if (!sandbox) {
         output = "Sandbox unavailable in this browser session.";
       } else {
         try {
-          const result = await sandbox.run({
-            callId: pending.callId,
-            code: String(call.payload.code || ""),
-            language: (String(call.payload.language || "javascript") as SandboxLanguage),
-          });
+          const result = await sandbox.run({ callId: pending.callId, code, language });
           output = [
             `exit: ${result.ok ? 0 : 1}`,
             result.stdout ? `stdout:\n${result.stdout}` : "",
@@ -363,6 +365,32 @@ export function useAgent() {
         }
       }
 
+      // `sandbox_exec` documents filename as "also save this into the workspace".
+      // It was never wired up, so Builder artefacts verified in the sandbox
+      // silently disappeared. Save it and surface it as a file card.
+      if (filename && !output.startsWith("Sandbox ")) {
+        try {
+          const res = await fetch("/api/agent/files", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: filename, content: code, language }),
+          });
+          const json = await res.json();
+          if (json.file) {
+            const saved = json.file as WorkspaceFile;
+            setFiles((prev) => [saved, ...prev.filter((f) => f.name !== saved.name)].slice(0, 60));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === targetId ? { ...m, events: [...m.events, { type: "file", file: saved }] } : m,
+              ),
+            );
+            output += `\nsaved to workspace: ${saved.name} (${saved.bytes} bytes)`;
+          }
+        } catch {
+          output += "\n(the sandbox ran, but saving the file to the workspace failed)";
+        }
+      }
+
       const settings = settingsRef.current;
       const next = await consume(
         {
@@ -373,7 +401,13 @@ export function useAgent() {
           temperature: settings.temperature,
           reasoning: settings.reasoning,
           conversationId: conversationRef.current || undefined,
-          resume: { messages: pending.messages, callId: pending.callId, output: output.slice(0, 12000) },
+          resume: {
+            messages: pending.messages,
+            callId: pending.callId,
+            output: output.slice(0, 12000),
+            // Keep the server's persisted transcript identical to what streamed.
+            priorText: priorTextRef.current,
+          },
         },
         targetId,
       );
@@ -399,6 +433,7 @@ export function useAgent() {
       setBusy(true);
       setStreaming({ text: "", reasoning: "" });
 
+      priorTextRef.current = "";
       const assistantId = uid("a");
       const turns = [
         ...messagesRef.current.filter((m) => m.content.trim()).map((m) => ({ role: m.role, content: m.content })),

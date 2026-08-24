@@ -18,12 +18,14 @@ import {
   Table as TableIcon,
   Terminal,
   TriangleAlert,
+  Workflow,
   X,
 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
-import type { AgentEvent, ChartSpec, Citation, TableSpec, WorkspaceFile } from "@/lib/agent/types";
+import type { AgentEvent, ChartSpec, Citation, DiagramSpec, TableSpec, WorkspaceFile } from "@/lib/agent/types";
 import type { UiMessage } from "@/lib/agent/types";
 import { AgentChart, AgentTable } from "./Charts";
+import { Diagram } from "./Diagram";
 import { SpeakButton } from "./Voice";
 
 const TOOL_ICON: Record<string, typeof Search> = {
@@ -39,6 +41,7 @@ const TOOL_ICON: Record<string, typeof Search> = {
   sandbox_exec: Terminal,
   chart: PieIcon,
   table: TableIcon,
+  diagram: Workflow,
   compute: Braces,
   ghana_forecast: PieIcon,
   ghana_national_table: TableIcon,
@@ -214,6 +217,9 @@ export function AgentMessage({
                   if (event.type === "table") {
                     return <AgentTable key={i} spec={event.table as TableSpec} />;
                   }
+                  if (event.type === "diagram") {
+                    return <Diagram key={i} spec={event.diagram as DiagramSpec} live={live} />;
+                  }
                   if (event.type === "file") {
                     return <FileCard key={i} file={event.file as WorkspaceFile} onOpen={() => onOpenFile?.(event.file as WorkspaceFile)} />;
                   }
@@ -282,7 +288,7 @@ export function AgentMessage({
 
             {body ? (
               <div className={`prose-agent prose-ghana ${live ? "a-caret" : ""}`}>
-                <Markdown text={body} />
+                <Markdown text={body} live={live} />
               </div>
             ) : live ? (
               <div className="space-y-2">

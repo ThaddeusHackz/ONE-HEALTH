@@ -18,7 +18,7 @@ interface AgentRequest {
   reasoning?: boolean;
   conversationId?: string;
   attachments?: AgentAttachment[];
-  resume?: { messages: ChatMessage[]; callId: string; output: string };
+  resume?: { messages: ChatMessage[]; callId: string; output: string; priorText?: string };
 }
 
 const VALID_MODES: AgentMode[] = ["chat", "research", "builder", "vision", "health"];

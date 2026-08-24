@@ -439,7 +439,7 @@ export function runForecast(opts: {
   districtScale?: number;
   official?: { date: string; cases: number }[];
 }): ForecastBundle {
-  const horizon = clamp(opts.horizon ?? 4, 1, 12);
+  const horizon = clamp(opts.horizon ?? 4, 1, 26);
   const disease = diseaseById(opts.diseaseId);
   const region = regionById(opts.regionId);
   let series = opts.official?.length

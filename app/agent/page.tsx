@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { AgentComposer, STARTER_PROMPTS } from "@/components/agent/AgentComposer";
 import { AgentMessage, AskCard } from "@/components/agent/AgentMessage";
-import { AgentWorkspace } from "@/components/agent/AgentWorkspace";
+import { AgentWorkspace, languageFor, type WorkspaceTab } from "@/components/agent/AgentWorkspace";
 import { useAgent, type AgentSettings } from "@/components/agent/useAgent";
 import type { SandboxLanguage } from "@/components/agent/SandboxFrame";
 import type { WorkspaceFile } from "@/lib/agent/types";
@@ -45,7 +45,13 @@ export default function AgentPage() {
     temperature: 0.4,
     reasoning: false,
   });
-  const [workspaceOpen, setWorkspaceOpen] = useState(true);
+  /**
+   * The sandbox is a drawer now, not a permanent column. Closed by default so
+   * the conversation gets the full width of the screen; one button slides it in
+   * from the right and the same button slides it back out.
+   */
+  const [sandboxOpen, setSandboxOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("preview");
   const [railOpen, setRailOpen] = useState(true);
   const [focusFile, setFocusFile] = useState<WorkspaceFile | null>(null);
   const [keys, setKeys] = useState<KeyStatus | null>(null);
@@ -66,6 +72,24 @@ export default function AgentPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [agent.messages, agent.streaming?.text]);
 
+  /* When the agent draws something in the sandbox, bring the drawer to it. */
+  const previewSignature = agent.preview ? `${agent.preview.language}:${agent.preview.code.length}` : "";
+  useEffect(() => {
+    if (!previewSignature) return;
+    setWorkspaceTab("preview");
+    setSandboxOpen(true);
+  }, [previewSignature]);
+
+  /* Escape slides the drawer back out. */
+  useEffect(() => {
+    if (!sandboxOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSandboxOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sandboxOpen]);
+
   const statusChips = useMemo(() => {
     if (!keys) return [];
     return [
@@ -85,19 +109,24 @@ export default function AgentPage() {
     (p: { language: SandboxLanguage; code: string } | null) => agent.setPreview(p),
     [agent],
   );
-  const openFile = useCallback(
-    (file: WorkspaceFile) => {
-      setFocusFile(file);
-      setWorkspaceOpen(true);
-    },
-    [],
-  );
+  const openFile = useCallback((file: WorkspaceFile) => {
+    setFocusFile(file);
+    setWorkspaceTab(languageFor(file.language || file.name) === "javascript" ? "code" : "preview");
+    setSandboxOpen(true);
+  }, []);
+
+  const toggleSandbox = useCallback(() => {
+    setSandboxOpen((v) => {
+      if (!v) setWorkspaceTab("preview");
+      return !v;
+    });
+  }, []);
 
   return (
     <div className="agent-shell">
-      <div className="mx-auto flex max-w-[110rem] gap-4 px-3 py-4 md:px-5">
+      <div className="mx-auto flex max-w-[132rem] gap-4 px-3 py-4 md:px-5">
         {/* ------------------------------ left rail ------------------------------ */}
-        <aside className={`${railOpen ? "hidden w-72 shrink-0 lg:block" : "hidden"} lg:block`}>
+        <aside className={`${railOpen ? "hidden w-72 shrink-0 lg:block" : "hidden"}`}>
           <div className="a-glass sticky top-24 space-y-3 rounded-[26px] p-3">
             <button className="a-btn a-btn-primary w-full" onClick={agent.newChat}>
               <Plus className="h-4 w-4" /> New conversation
@@ -155,8 +184,8 @@ export default function AgentPage() {
               </div>
               {keys && !keys.openrouter && (
                 <p className="mt-2 rounded-xl bg-gold-soft px-2 py-1.5 text-[11px] text-ink">
-                  Add <span className="a-mono">OPENROUTER_API_KEY</span> on Render to switch on reasoning, research and vision;{" "}
-                  <span className="a-mono">GEMINI_API_KEY</span> switches on image generation.
+                  Add <span className="a-mono">OPENROUTER_API_KEY</span> on Render to switch on reasoning, research and
+                  vision; <span className="a-mono">GEMINI_API_KEY</span> switches on image generation.
                 </p>
               )}
             </div>
@@ -183,7 +212,12 @@ export default function AgentPage() {
         {/* ------------------------------- centre ------------------------------- */}
         <section className="min-w-0 flex-1">
           <header className="a-glass mb-3 flex flex-wrap items-center gap-3 rounded-[26px] px-4 py-3">
-            <button className="rounded-full p-1.5 hover:bg-white lg:hidden" onClick={() => setRailOpen((v) => !v)} aria-label="History">
+            <button
+              className="rounded-full p-1.5 hover:bg-white"
+              onClick={() => setRailOpen((v) => !v)}
+              aria-label="Toggle history"
+              title={railOpen ? "Hide history for more room" : "Show history"}
+            >
               <MessagesSquare className="h-4 w-4" />
             </button>
             <div className="min-w-0 flex-1">
@@ -191,7 +225,8 @@ export default function AgentPage() {
                 <span className="a-grad-text">ONE HEALTH AI</span> Agent
               </h1>
               <p className="text-[12px] text-muted">
-                Reasoning · live web · vision · image generation · in-browser sandbox · charts · memory. Routed through OpenRouter with automatic multi-model fallback.
+                Reasoning · live web · vision · image generation · in-browser sandbox · charts · diagrams · memory.
+                Routed through OpenRouter with automatic multi-model fallback.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -209,11 +244,21 @@ export default function AgentPage() {
                 ))}
               </select>
               <button
-                className="a-chip lg:hidden"
-                onClick={() => setWorkspaceOpen((v) => !v)}
-                title="Toggle workspace"
+                className={`a-chip ${sandboxOpen ? "!bg-ink !text-white" : ""}`}
+                onClick={toggleSandbox}
+                title={sandboxOpen ? "Slide the sandbox away" : "Open the sandbox: preview, code, files, console, memory"}
+                aria-expanded={sandboxOpen}
               >
-                <PanelRight className="h-3.5 w-3.5" /> Workspace
+                <PanelRight className="h-3.5 w-3.5" /> Sandbox
+                {agent.files.length > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 text-[9px] ${
+                      sandboxOpen ? "bg-white/20 text-white" : "bg-green-soft text-ghana-green"
+                    }`}
+                  >
+                    {agent.files.length}
+                  </span>
+                )}
               </button>
               <button className="a-chip" onClick={agent.exportTranscript} title="Download this conversation as markdown">
                 Export
@@ -221,7 +266,10 @@ export default function AgentPage() {
             </div>
           </header>
 
-          <div ref={scrollRef} className="a-scroll max-h-[calc(100vh-19rem)] min-h-[24rem] space-y-4 overflow-auto pr-1">
+          <div
+            ref={scrollRef}
+            className="a-scroll mx-auto max-w-[76rem] max-h-[calc(100vh-16rem)] min-h-[26rem] space-y-4 overflow-auto pr-1"
+          >
             {agent.messages.length === 0 && (
               <div className="a-card a-in p-6">
                 <div className="flex items-center gap-2">
@@ -230,8 +278,8 @@ export default function AgentPage() {
                 </div>
                 <p className="mt-2 max-w-2xl text-sm leading-7 text-muted">
                   This agent reads the live internet, sees images and documents, writes and tests code in an isolated
-                  sandbox, generates images, plots live charts, runs the Ghana ensemble forecasts, and remembers what
-                  matters between sessions.
+                  sandbox, generates images, plots live charts, draws flowcharts and diagrams, runs the Ghana ensemble
+                  forecasts, and remembers what matters between sessions.
                 </p>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {STARTER_PROMPTS.map((s) => (
@@ -253,8 +301,8 @@ export default function AgentPage() {
                     { icon: Search, title: "Live internet", body: "Tavily search, page reads and multi-step deep research with citations." },
                     { icon: Eye, title: "Vision", body: "Photos, PDFs, Word, Excel, CSV - structured extraction with identifier flagging." },
                     { icon: ImageIcon, title: "Images", body: "Generate new artwork with OpenRouter image models, or pull real Unsplash photography." },
-                    { icon: Terminal, title: "Sandbox", body: "JavaScript, HTML, Python (Pyodide), CSS, SVG - run and verified before you see it." },
-                    { icon: Activity, title: "Live data", body: "Ghana ensemble forecasts, national board, z/CUSUM alerts, weather, tables and charts." },
+                    { icon: Terminal, title: "Sandbox", body: "JavaScript, HTML, Python (Pyodide), CSS, SVG, Mermaid, CSV - run and verified before you see it." },
+                    { icon: Activity, title: "Live data", body: "Ghana ensemble forecasts, national board, z/CUSUM alerts, weather, tables, charts and diagrams." },
                     { icon: Brain, title: "Memory", body: "Facts distilled from each session and replayed into every future turn." },
                   ].map((c) => {
                     const Icon = c.icon;
@@ -303,59 +351,80 @@ export default function AgentPage() {
             )}
           </div>
 
-          <AgentComposer
-            onSend={(input) => agent.send(input)}
-            busy={agent.busy}
-            onStop={agent.stop}
-            tools={agent.tools}
-            settings={settings}
-            onSettings={patch}
-          />
-        </section>
-
-        {/* ------------------------------ workspace ----------------------------- */}
-        <div className="w-full shrink-0 lg:w-[30rem] xl:w-[36rem]">
-          <div className="sticky top-24 h-[calc(100vh-8rem)]">
-            <AgentWorkspace
-              open={workspaceOpen}
-              onClose={() => setWorkspaceOpen(false)}
-              preview={agent.preview}
-              onPreview={openPreview}
-              files={agent.files}
-              onDeleteFile={(name) => agent.deleteWorkspaceFile(name)}
-              onSaveFile={(name, content, language) => agent.writeWorkspaceFile(name, content, language)}
-              logs={agent.logs}
-              onLog={agent.pushLog}
-              facts={agent.facts}
-              onSaveFact={(text, tag) => agent.saveFact(text, tag)}
-              onDropFact={(id) => agent.dropFact(id)}
-              onClearMemory={agent.clearMemory}
-              sandboxReady={agent.setSandbox}
-              focusFile={focusFile}
+          <div className="mx-auto max-w-[76rem]">
+            <AgentComposer
+              onSend={(input) => agent.send(input)}
+              busy={agent.busy}
+              onStop={agent.stop}
+              tools={agent.tools}
+              settings={settings}
+              onSettings={patch}
             />
           </div>
+        </section>
+      </div>
+
+      {/* --------------------- sandbox drawer (slides from the right) -------------------- */}
+      <div
+        className={`fixed inset-0 z-[70] ${sandboxOpen ? "" : "pointer-events-none"}`}
+        aria-hidden={!sandboxOpen}
+      >
+        <div
+          className={`absolute inset-0 bg-ink/25 backdrop-blur-[2px] transition-opacity duration-300 ${
+            sandboxOpen ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => setSandboxOpen(false)}
+        />
+        <div
+          className={`absolute right-0 top-0 h-[100dvh] w-[min(60rem,96vw)] shadow-[0_0_80px_rgba(10,16,32,0.28)] transition-transform duration-300 ease-out ${
+            sandboxOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+          role="dialog"
+          aria-label="Sandbox workspace"
+        >
+          <AgentWorkspace
+            onClose={() => setSandboxOpen(false)}
+            tab={workspaceTab}
+            onTab={setWorkspaceTab}
+            preview={agent.preview}
+            onPreview={openPreview}
+            files={agent.files}
+            onDeleteFile={(name) => agent.deleteWorkspaceFile(name)}
+            onSaveFile={(name, content, language) => agent.writeWorkspaceFile(name, content, language)}
+            logs={agent.logs}
+            onLog={agent.pushLog}
+            facts={agent.facts}
+            onSaveFact={(text, tag) => agent.saveFact(text, tag)}
+            onDropFact={(id) => agent.dropFact(id)}
+            onClearMemory={agent.clearMemory}
+            sandboxReady={agent.setSandbox}
+            focusFile={focusFile}
+          />
         </div>
       </div>
 
-      {!workspaceOpen && (
+      {!sandboxOpen && (
         <button
           className="a-glass fixed bottom-24 right-5 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold lg:bottom-8"
-          onClick={() => setWorkspaceOpen(true)}
+          onClick={() => setSandboxOpen(true)}
         >
-          <PanelRight className="h-4 w-4" /> Workspace
+          <PanelRight className="h-4 w-4" /> Sandbox
+          {agent.files.length > 0 && (
+            <span className="rounded-full bg-green-soft px-1.5 text-[9px] text-ghana-green">{agent.files.length}</span>
+          )}
         </button>
       )}
 
       {!railOpen && (
         <button
-          className="a-glass fixed bottom-24 left-5 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold lg:hidden"
+          className="a-glass fixed bottom-24 left-5 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold"
           onClick={() => setRailOpen(true)}
         >
           <ChevronLeft className="h-4 w-4" /> History
         </button>
       )}
 
-      <div className="mx-auto max-w-[110rem] px-5 pb-8">
+      <div className="mx-auto max-w-[132rem] px-5 pb-8">
         <p className="a-mono text-[11px] text-muted">
           Built for the Ghana Health Service. Forecasts are intervals, never certainty. Need the classic desks?{" "}
           <Link href="/forecast" className="text-ghana-green underline">

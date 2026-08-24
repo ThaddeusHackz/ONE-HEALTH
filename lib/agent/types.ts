@@ -12,6 +12,7 @@ export type AgentEventType =
   | "file"
   | "chart"
   | "table"
+  | "diagram"
   | "plan"
   | "ask"
   | "sandbox_request"
@@ -46,6 +47,23 @@ export interface TableSpec {
   title: string;
   columns: string[];
   rows: TableRow[];
+  note?: string;
+}
+
+/**
+ * A rendered diagram (flowchart, sequence, ER, state, Gantt, mind map, timeline,
+ * journey, git graph, quadrant, pie, xychart, sankey, block, C4, architecture).
+ *
+ * The source is Mermaid, which is the diagram interchange every major assistant
+ * (ChatGPT, Claude artifacts, Microsoft 365 Copilot) uses: text in, SVG out, so
+ * the model's intent stays auditable and the render is deterministic.
+ */
+export interface DiagramSpec {
+  title?: string;
+  /** Mermaid source, e.g. "flowchart TD\n  A --> B". */
+  source: string;
+  /** Human-readable kind, for the caption: flowchart | sequence | er | state | gantt | … */
+  kind?: string;
   note?: string;
 }
 
