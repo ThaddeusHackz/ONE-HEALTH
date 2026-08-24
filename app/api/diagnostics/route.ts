@@ -8,7 +8,11 @@ import {
   openRouterTitle,
   openWeatherKey,
   tavilyKey,
+  unsplashKey,
+  whisperKey,
 } from "@/lib/env";
+import { GEMINI_IMAGE_MODEL_CHAIN, listGeminiModels } from "@/lib/agent/media";
+import { geminiKey } from "@/lib/env";
 import { lastOpenRouterError, MAX_MODELS_PER_REQUEST } from "@/lib/openrouter";
 
 export const dynamic = "force-dynamic";
@@ -137,6 +141,79 @@ export async function GET() {
       const detail =
         typeof json.detail === "string" ? json.detail : json.detail?.status || json.subscription?.tier || user.statusText;
       return { id: "elevenlabs", ok: user.ok, status: user.status, detail: String(detail), masked: maskKey(key) };
+    }),
+  );
+
+  checks.push(
+    await probe("unsplash", maskKey(unsplashKey()), async () => {
+      const key = unsplashKey();
+      if (!key) {
+        return { id: "unsplash", ok: false, status: 0, detail: "missing key - image search falls back to Tavily images", masked: "not set" };
+      }
+      const res = await fetch("https://api.unsplash.com/search/photos?query=ghana+health&per_page=1", {
+        headers: { Authorization: `Client-ID ${key}`, "Accept-Version": "v1" },
+      });
+      const json = (await res.json()) as { total?: number; errors?: string[] };
+      return {
+        id: "unsplash",
+        ok: res.ok && Boolean(json.total),
+        status: res.status,
+        detail: res.ok ? `${json.total || 0} photos match "ghana health"` : (json.errors?.[0] || res.statusText),
+        masked: maskKey(key),
+      };
+    }),
+  );
+
+  checks.push(
+    await probe("image-generation", maskKey(geminiKey()), async () => {
+      const key = geminiKey();
+      if (!key) {
+        return {
+          id: "image-generation",
+          ok: false,
+          status: 0,
+          detail: "missing GEMINI_API_KEY - image generation is Gemini-only",
+          masked: "not set",
+        };
+      }
+      const { ok, models, error } = await listGeminiModels();
+      const overlap = GEMINI_IMAGE_MODEL_CHAIN.filter((m) => models.includes(m));
+      return {
+        id: "image-generation",
+        ok: ok && overlap.length > 0,
+        status: ok ? 200 : 0,
+        detail: ok
+          ? `${models.length} image-output models on the key; ${overlap.length} of our chain reachable${
+              overlap.length ? ` (${overlap[0]})` : ""
+            }`
+          : error || "no image-output models reachable with this key",
+        masked: maskKey(key),
+      };
+    }),
+  );
+
+  checks.push(
+    await probe("whisper", maskKey(whisperKey()), async () => {
+      const key = whisperKey();
+      if (!key) {
+        return {
+          id: "whisper",
+          ok: Boolean(openRouterKey()),
+          status: 0,
+          detail: openRouterKey()
+            ? "no direct OpenAI key - transcription routes through OpenRouter"
+            : "no key - browser Web Speech API only",
+          masked: "not set",
+        };
+      }
+      const res = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` } });
+      return {
+        id: "whisper",
+        ok: res.ok,
+        status: res.status,
+        detail: res.ok ? "OpenAI key valid - Whisper available" : "OpenAI key rejected",
+        masked: maskKey(key),
+      };
     }),
   );
 

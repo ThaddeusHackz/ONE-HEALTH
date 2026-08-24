@@ -5,9 +5,31 @@ import { adminEmail, adminName, adminPassword } from "./env";
 import { DEFAULT_CONTENT, DEFAULT_KNOWLEDGE, DEFAULT_NAV, type NavItem, type SiteContent } from "./cms";
 import { appendEvent } from "./archive";
 import { loadPgSnapshot, savePgSnapshot } from "./pg-store";
-import type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
+import type {
+  ActivityRow,
+  AgentConversationRow,
+  AgentFileRow,
+  AuditRow,
+  ChatRow,
+  DocumentRow,
+  ForecastRow,
+  KnowledgeItem,
+  MemoryFactRow,
+  OfficialSeries,
+} from "./records";
 
-export type { ActivityRow, AuditRow, ChatRow, DocumentRow, ForecastRow, KnowledgeItem, OfficialSeries } from "./records";
+export type {
+  ActivityRow,
+  AgentConversationRow,
+  AgentFileRow,
+  AuditRow,
+  ChatRow,
+  DocumentRow,
+  ForecastRow,
+  KnowledgeItem,
+  MemoryFactRow,
+  OfficialSeries,
+} from "./records";
 
 export interface AdminUser {
   id: string;
@@ -28,6 +50,9 @@ export interface Database {
   audits: AuditRow[];
   activity: ActivityRow[];
   admins: AdminUser[];
+  agentMemory: MemoryFactRow[];
+  agentConversations: AgentConversationRow[];
+  agentFiles: AgentFileRow[];
 }
 
 const DATA_DIR = join(process.cwd(), "data");
@@ -67,6 +92,9 @@ function emptyDb(): Database {
     audits: [],
     activity: [],
     admins: [seedAdmin()],
+    agentMemory: [],
+    agentConversations: [],
+    agentFiles: [],
   };
 }
 
@@ -85,6 +113,9 @@ function load(): Database {
         officialSeries: raw.officialSeries || [],
         audits: raw.audits || [],
         admins: raw.admins?.length ? raw.admins : [seedAdmin()],
+        agentMemory: (raw.agentMemory || []) as MemoryFactRow[],
+        agentConversations: (raw.agentConversations || []) as AgentConversationRow[],
+        agentFiles: (raw.agentFiles || []) as AgentFileRow[],
       };
       return cache;
     }
@@ -95,10 +126,18 @@ function load(): Database {
   return cache;
 }
 
+/**
+ * DEFAULT_NAV is the canonical order (Home, AI Agent, Forecast, ...). A stored
+ * snapshot from an older deploy must not pin new tabs to the end of the bar, so
+ * we re-sort onto the default order and keep any custom entries after it.
+ */
 function mergeNav(existing?: NavItem[]): NavItem[] {
-  const have = new Set((existing || []).map((n) => n.href));
-  const extra = DEFAULT_NAV.filter((n) => !have.has(n.href));
-  return [...(existing || DEFAULT_NAV.map((n) => ({ ...n }))), ...extra];
+  if (!existing?.length) return DEFAULT_NAV.map((n) => ({ ...n }));
+  const order = new Map(DEFAULT_NAV.map((n, i) => [n.href, i]));
+  const defaults = new Map(existing.map((n) => [n.href, n]));
+  const merged = DEFAULT_NAV.map((n) => ({ ...n, ...(defaults.get(n.href) || {}) }));
+  const custom = existing.filter((n) => !order.has(n.href));
+  return [...merged, ...custom];
 }
 
 function persist(db: Database) {
@@ -126,6 +165,9 @@ export async function hydrateFromPostgres() {
       officialSeries: body.officialSeries || [],
       audits: body.audits || [],
       admins: body.admins?.length ? body.admins : [seedAdmin()],
+      agentMemory: (body.agentMemory || []) as MemoryFactRow[],
+      agentConversations: (body.agentConversations || []) as AgentConversationRow[],
+      agentFiles: (body.agentFiles || []) as AgentFileRow[],
     };
     console.info("[store] hydrated snapshot from Postgres");
   } catch (err) {

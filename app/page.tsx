@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CloudSun, Eye, Mic, Radio, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, CloudSun, Eye, Mic, Radio, ShieldAlert, Sparkles } from "lucide-react";
 import { Disclaimer } from "@/components/Disclaimer";
 import { useSite } from "@/components/SiteProvider";
 import { DISEASES, REGIONS } from "@/lib/ghana";
@@ -27,6 +27,13 @@ export default function HomePage() {
           <h1 className="font-display mt-5 text-4xl leading-[1.05] tracking-tight md:text-6xl">{content.heroTitle}</h1>
           <p className="mt-5 max-w-xl text-lg leading-8 text-muted">{content.heroBody}</p>
           <div className="mt-7 flex flex-wrap gap-3">
+            <Link
+              href="/agent"
+              className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-ghana-green to-teal px-5 py-3 text-sm font-semibold text-white shadow-card transition hover:-translate-y-0.5"
+            >
+              <Bot className="h-4 w-4" /> Open the AI Agent
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+            </Link>
             <Link href="/forecast" className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
               {content.heroPrimary} <ArrowRight className="h-4 w-4" />
             </Link>
@@ -74,6 +81,34 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-4 px-4 md:grid-cols-2 md:px-6">
+        <Link
+          href="/agent"
+          className="group relative overflow-hidden rounded-[28px] border border-line bg-white p-6 shadow-card transition hover:-translate-y-0.5 md:col-span-2"
+        >
+          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br from-green-soft to-teal-soft opacity-70" />
+          <div className="relative flex flex-wrap items-start gap-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-ghana-green to-teal text-white">
+              <Bot className="h-6 w-6" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ghana-green">New · full agent</div>
+              <h3 className="font-display text-3xl tracking-tight">ONE HEALTH AI Agent</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+                One desk that reasons, searches the live internet, reads any photo or document, generates images, writes
+                files and runs them in an isolated sandbox, plots live charts, forecasts Ghana signals, speaks and
+                listens, and remembers what matters between sessions.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold">
+                {["Live web research", "Vision on any file", "Image generation", "Code sandbox", "Voice in / voice out", "Long-term memory", "Ghana forecasts"].map((t) => (
+                  <span key={t} className="rounded-full border border-line bg-paper px-2.5 py-1">{t}</span>
+                ))}
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ghana-green group-hover:underline">
+                Open the agent <ArrowRight className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        </Link>
         {caps.map((c, i) => {
           const Icon = ICONS[i];
           return (

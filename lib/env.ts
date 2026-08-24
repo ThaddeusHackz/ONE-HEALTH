@@ -65,6 +65,53 @@ export function elevenLabsVoice(): string {
   return first("ELEVENLABS_VOICE_ID", "ELEVEN_LABS_VOICE_ID") || "21m00Tcm4TlvDq8ikWAM";
 }
 
+export function unsplashKey(): string {
+  return first("UNSPLASH_ACCESS_KEY", "UNSPLASH_API_KEY", "UNSPLASH_KEY");
+}
+
+/**
+ * Direct OpenAI key for Whisper speech-to-text. When absent we route
+ * transcription through OpenRouter's audio endpoint (same key, one bill).
+ */
+export function whisperKey(): string {
+  const direct = first("OPENAI_API_KEY", "OPENAI_WHISPER_API_KEY", "WHISPER_API_KEY");
+  // An sk-or key is not an OpenAI key - never send it to api.openai.com.
+  if (direct.startsWith("sk-or-")) return "";
+  return direct;
+}
+
+/**
+ * Gemini API key - used for image generation only.
+ * Reasoning, vision and search stay on OpenRouter/Tavily; do not route them here.
+ */
+export function geminiKey(): string {
+  const direct = first(
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_KEY",
+    "GOOGLE_GENAI_KEY",
+  );
+  // An OpenRouter key is not a Google key - never send it to Google.
+  if (direct.startsWith("sk-or-")) return "";
+  return direct;
+}
+
+/** Optional comma-separated Gemini image model slugs tried before the built-in chain. */
+export function geminiImageModels(): string[] {
+  const raw = first("GEMINI_IMAGE_MODELS", "GEMINI_IMAGE_MODEL");
+  if (!raw) return [];
+  return raw
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function agentMaxSteps(): number {
+  const raw = Number(first("AGENT_MAX_STEPS"));
+  return Number.isFinite(raw) && raw > 0 ? Math.min(Math.round(raw), 24) : 8;
+}
+
 export function openWeatherKey(): string {
   return first(
     "OPENWEATHER_API_KEY",

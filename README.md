@@ -4,6 +4,7 @@ National **disease forecasting, document vision, and early-warning** desk for th
 
 This repository turns the Phase 2 modelling workbook into a working system:
 
+- **AI Agent** (`/agent`) - reasoning, live web research, vision, image generation, an in-browser code sandbox, charts, tables and long-term memory
 - probabilistic 4-week forecasts (baselines → ridge → random forest → ensemble)
 - IDSR-style z-score watches
 - OpenRouter multi-model intelligence with automatic fallback
@@ -25,7 +26,21 @@ npm run dev
 
 Open http://localhost:3000
 
-Without a key the statistical engine, regional board, and offline briefings still run. Live vision, chat synthesis, and Whisper need OpenRouter.
+Without a key the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning, live research, vision, image generation and Whisper need OpenRouter.
+
+### Optional keys that light up more of the AI Agent
+
+| Variable | Unlocks |
+|---|---|
+| `TAVILY_API_KEY` | live web search, deep research (DuckDuckGo fallback otherwise) |
+| `UNSPLASH_ACCESS_KEY` | real stock photography (Tavily images otherwise) |
+| `OPENAI_API_KEY` | Whisper speech-to-text directly (OpenRouter route otherwise) |
+| `ELEVENLABS_API_KEY` | high-quality spoken answers (device voice otherwise) |
+| `OPENWEATHER_API_KEY` | live climate pillar |
+| `OPENROUTER_IMAGE_MODELS` | comma-separated image model slugs tried first |
+| `AGENT_MAX_STEPS` | agentic tool steps per turn (default 8, max 24) |
+
+Agent docs: [`docs/AI_CAPABILITIES.md`](docs/AI_CAPABILITIES.md) · [`docs/AGENT_FORENSIC.md`](docs/AGENT_FORENSIC.md)
 
 Admin CMS (Wix-style copy, colours, nav, stored files): `/admin`  
 Set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env.local`. Never commit them.
@@ -36,6 +51,15 @@ Host anywhere that can run Node 20+ (Render, Railway, a VPS, Docker):
 npm ci --include=dev
 npm run build
 npm start
+```
+
+## Tests
+
+```bash
+npm run typecheck        # tsc --noEmit
+npm run selftest:agent   # drives the real compiled agent modules (24 assertions)
+npm run selftest         # 22 HTTP checks against a running server
+npm test                 # both
 ```
 
 The process listens on `0.0.0.0:$PORT`. Put keys in the host’s environment panel, not in the repo. Official DHIMS2 CSVs can be loaded on `/extracts`. Field briefs are on `/field`. Audit pack and the append-only event log download from `/admin`. Full inventory: [CHANGELOG.md](CHANGELOG.md).
