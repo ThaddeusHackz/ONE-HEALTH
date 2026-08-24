@@ -315,6 +315,77 @@ function assert(cond, message) {
     return "agentMemory, agentConversations, agentFiles";
   });
 
+  /* --------------------------- render hardening ------------------------ */
+  check("render: oversized snapshot is trimmed, not refused", () => {
+    const pgStore = require(path.join(compiled, "pg-store.js"));
+    const big = {
+      content: { brandName: "ONE HEALTH" },
+      agentFiles: Array.from({ length: 40 }, (_, i) => ({
+        id: `f${i}`,
+        name: `f${i}.html`,
+        content: "x".repeat(400_000),
+        bytes: 400_000,
+      })),
+      agentConversations: Array.from({ length: 10 }, (_, i) => ({
+        id: `c${i}`,
+        messages: Array.from({ length: 60 }, () => ({ role: "user", content: "y".repeat(6000) })),
+      })),
+    };
+    const before = JSON.stringify(big).length;
+    const { body, bytes, trimmed } = pgStore.trimSnapshot(big, 12_000_000);
+    assert(bytes <= 12_000_000, `still ${bytes} bytes`);
+    assert(bytes < before, "nothing was trimmed");
+    assert(body.content?.brandName === "ONE HEALTH", "unrelated state was damaged");
+    assert(body.agentFiles.length === 40, "file metadata must survive");
+    assert(trimmed.length > 0, "no trim reported");
+    return `${(before / 1e6).toFixed(1)}MB -> ${(bytes / 1e6).toFixed(1)}MB (${trimmed.join(", ")})`;
+  });
+
+  check("render: small snapshot passes through untouched", () => {
+    const pgStore = require(path.join(compiled, "pg-store.js"));
+    const small = { content: { brandName: "ONE HEALTH" }, agentFiles: [{ name: "a.md", content: "hi" }] };
+    const { body, trimmed } = pgStore.trimSnapshot(small);
+    assert(trimmed.length === 0, "should not trim");
+    assert(body.agentFiles[0].content === "hi", "content changed");
+    return "no trim";
+  });
+
+  check("render: agent store caps keep the snapshot row bounded", () => {
+    const memory = require(path.join(compiled, "agent/memory.js"));
+    const big = "z".repeat(500_000);
+    const f = memory.writeFile("cap-check.html", big);
+    assert(f.bytes <= 120_000, `file cap not applied: ${f.bytes}`);
+    memory.deleteFile("cap-check.html");
+    const row = memory.upsertConversation({
+      messages: Array.from({ length: 400 }, (_, i) => ({ role: "user", content: `m${i} ` + "q".repeat(40_000) })),
+    });
+    const loaded = memory.getConversation(row.id);
+    assert(loaded.messages.length <= 160, `message cap not applied: ${loaded.messages.length}`);
+    assert(loaded.messages[0].content.length <= 12_000, "message content not capped");
+    memory.deleteConversation(row.id);
+    return `file<=${f.bytes}B, msgs=${loaded.messages.length}`;
+  });
+
+  check("render: shared pg pool is configured for a small connection budget", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/pg-pool.ts"), "utf8");
+    assert(/max:\s*2/.test(src), "pool max not limited");
+    assert(/connectionTimeoutMillis/.test(src), "no connection timeout");
+    const store = fs.readFileSync(path.join(ROOT, "lib/store.ts"), "utf8");
+    assert(/savePgSnapshot/.test(store), "store no longer snapshots");
+    const archive = fs.readFileSync(path.join(ROOT, "lib/archive.ts"), "utf8");
+    assert(!/new Client/.test(archive), "archive still opens a client per event");
+    return "max:2, timeout set, no per-call clients";
+  });
+
+  check("render: SSE cannot be buffered by Next compression", () => {
+    const cfg = fs.readFileSync(path.join(ROOT, "next.config.ts"), "utf8");
+    assert(/compress:\s*false/.test(cfg), "compress not disabled");
+    const route = fs.readFileSync(path.join(ROOT, "app/api/agent/route.ts"), "utf8");
+    assert(/X-Accel-Buffering/.test(route), "missing anti-buffering header");
+    assert(/text\/event-stream/.test(route), "missing SSE content type");
+    return "compress:false + X-Accel-Buffering:no";
+  });
+
   /* ----------------------------- openrouter ---------------------------- */
   check("openrouter: model chain is chunked at the 3-slug API limit", () => {
     assert(openrouter.MAX_MODELS_PER_REQUEST === 3, "limit changed");

@@ -47,10 +47,16 @@ export interface AgentFile {
   updatedAt: string;
 }
 
+/**
+ * Everything here is serialised into one Postgres jsonb row on a 1 GB free
+ * database, so the caps are about snapshot size, not just tidiness.
+ */
 const MAX_FACTS = 400;
-const MAX_CONVERSATIONS = 120;
-const MAX_FILES = 200;
-const MAX_FILE_BYTES = 400_000;
+const MAX_CONVERSATIONS = 60;
+const MAX_MESSAGES_PER_CONVERSATION = 160;
+const MAX_MESSAGE_CHARS = 12_000;
+const MAX_FILES = 60;
+const MAX_FILE_BYTES = 120_000;
 
 /* ------------------------------- facts ------------------------------- */
 
@@ -155,7 +161,12 @@ export function upsertConversation(input: {
     title,
     mode: input.mode || "chat",
     model: input.model || "",
-    messages: input.messages.slice(-400),
+    messages: input.messages
+      .slice(-MAX_MESSAGES_PER_CONVERSATION)
+      .map((m) => ({
+        ...m,
+        content: typeof m.content === "string" ? m.content.slice(0, MAX_MESSAGE_CHARS) : m.content,
+      })),
     createdAt: now,
     updatedAt: now,
   };

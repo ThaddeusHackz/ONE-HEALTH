@@ -284,6 +284,13 @@ export default function AgentPage() {
               />
             )}
 
+            {agent.notice && (
+              <div className="a-card a-in ml-12 flex items-start gap-2 border-gold-soft p-3 text-[12px]">
+                <span className="a-dot mt-1 h-2 w-2 shrink-0 rounded-full bg-ghana-gold" />
+                <span>{agent.notice}</span>
+              </div>
+            )}
+
             {agent.error && (
               <div className="a-card a-in ml-12 flex items-start gap-2 border-red-soft p-3 text-[12px] text-ghana-red">
                 <TriangleAlert className="mt-0.5 h-4 w-4" />

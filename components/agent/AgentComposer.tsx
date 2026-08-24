@@ -14,7 +14,12 @@ const MODES: { id: AgentMode; label: string; hint: string }[] = [
   { id: "health", label: "One Health", hint: "Ghana forecasts, national board, climate signals" },
 ];
 
-const MAX_FILE_MB = 9;
+/**
+ * Attachments travel as base64 inside a JSON body to a 512 MB Render instance,
+ * so the caps are deliberately below what a desktop app would allow.
+ */
+const MAX_FILE_MB = 4;
+const MAX_FILES = 5;
 
 async function toAttachment(file: File): Promise<AgentAttachment | null> {
   if (file.size > MAX_FILE_MB * 1024 * 1024) return null;
@@ -90,11 +95,15 @@ export function AgentComposer({
 
   async function addFiles(list: FileList | File[]) {
     setError("");
-    const incoming = Array.from(list).slice(0, 6);
+    const incoming = Array.from(list).slice(0, MAX_FILES);
     const parsed = await Promise.all(incoming.map(toAttachment));
     const rejected = parsed.filter((p) => !p).length;
-    if (rejected) setError(`${rejected} file(s) skipped - over ${MAX_FILE_MB} MB.`);
-    setAttachments((prev) => [...prev, ...(parsed.filter(Boolean) as AgentAttachment[])].slice(0, 8));
+    if (rejected) setError(`${rejected} file(s) skipped - each file must be under ${MAX_FILE_MB} MB.`);
+    setAttachments((prev) => {
+      const next = [...prev, ...(parsed.filter(Boolean) as AgentAttachment[])];
+      if (next.length > MAX_FILES) setError(`Up to ${MAX_FILES} attachments per turn.`);
+      return next.slice(0, MAX_FILES);
+    });
   }
 
   function submit() {

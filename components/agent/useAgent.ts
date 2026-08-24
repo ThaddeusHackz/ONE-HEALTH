@@ -66,6 +66,14 @@ interface StreamFrame {
 
 const STORAGE_KEY = "ohg.agent.session.v1";
 
+/**
+ * A Render free instance that has been idle 15 minutes answers the first request
+ * with an HTML "Application loading" page (HTTP 200) while it spins up - about a
+ * minute. Without this the client would silently show an empty answer, so we
+ * detect the loading page, say so, and retry.
+ */
+const COLD_START_WAITS = [15000, 20000, 25000];
+
 function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -83,6 +91,7 @@ export function useAgent() {
   const [configured, setConfigured] = useState(true);
   const [pendingAsk, setPendingAsk] = useState<PendingAsk | null>(null);
   const [logs, setLogs] = useState<{ level: string; text: string }[]>([]);
+  const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<{ language: SandboxLanguage; code: string } | null>(null);
 
   const sandboxRef = useRef<SandboxHandle | null>(null);
@@ -155,18 +164,51 @@ export function useAgent() {
 
   /* ------------------------------- streaming ---------------------------- */
 
+  const openStream = useCallback(
+    async (payload: Record<string, unknown>, controller: AbortController): Promise<Response> => {
+      const body = JSON.stringify(payload);
+      let lastError = "";
+      for (let attempt = 0; ; attempt += 1) {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+        const ctype = res.headers.get("content-type") || "";
+        if (res.ok && ctype.includes("text/event-stream")) {
+          setNotice("");
+          return res;
+        }
+        const text = await res.text().catch(() => "");
+        lastError = text;
+        const coldStart =
+          res.ok && (!ctype || /text\/html/i.test(ctype) || /Render|Application loading|spinning up/i.test(text));
+        if (!coldStart || attempt >= COLD_START_WAITS.length) {
+          throw new Error(
+            res.status === 413
+              ? `Request too large. Attach fewer or smaller files. ${text.slice(0, 160)}`
+              : `Agent request failed (${res.status}) ${text.slice(0, 200)}`,
+          );
+        }
+        setNotice(
+          `The server was asleep (Render free tier spins down after 15 idle minutes). Waking it - attempt ${
+            attempt + 1
+          } of ${COLD_START_WAITS.length}, cold start takes about a minute…`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, COLD_START_WAITS[attempt]));
+        if (controller.signal.aborted) throw new Error("Stopped");
+      }
+    },
+    [],
+  );
+
   const consume = useCallback(async (payload: Record<string, unknown>, targetId: string) => {
     const controller = new AbortController();
     abortRef.current = controller;
-    const res = await fetch("/api/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!res.ok || !res.body) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Agent request failed (${res.status}) ${text.slice(0, 200)}`);
+    const res = await openStream(payload, controller);
+    if (!res.body) {
+      throw new Error("Agent stream returned no body");
     }
 
     const reader = res.body.getReader();
@@ -277,7 +319,7 @@ export function useAgent() {
     if (newConversationId) setConversationId(newConversationId);
 
     return { pending, finalText, finalModel };
-  }, [pushLog]);
+  }, [openStream, pushLog]);
 
   /* --------------------------- sandbox handshake ------------------------ */
 
@@ -564,6 +606,7 @@ export function useAgent() {
     setBusy(false);
     setStreaming(null);
     setPendingAsk(null);
+    setNotice("");
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (!last || last.role !== "assistant") return prev;
@@ -605,6 +648,7 @@ export function useAgent() {
     configured,
     pendingAsk,
     logs,
+    notice,
     preview,
     setPreview,
     setSandbox,

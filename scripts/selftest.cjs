@@ -180,6 +180,38 @@ async function json(path, opts) {
     if (!/data:/.test(text)) throw new Error("no data frames");
   });
 
+  await check("agent rejects an oversized body (512MB Render instance)", async () => {
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turns: [{ role: "user", content: "x".repeat(30_000_000) }] }),
+    });
+    if (res.status !== 413) throw new Error("expected 413, got " + res.status);
+  });
+
+  await check("agent rejects malformed JSON", async () => {
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json",
+    });
+    if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+  });
+
+  await check("streaming responses are not compressed", async () => {
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip" },
+      body: JSON.stringify({ turns: [{ role: "user", content: "ping" }] }),
+    });
+    const enc = res.headers.get("content-encoding");
+    if (enc && /gzip|br/i.test(enc)) throw new Error("SSE is being compressed: " + enc);
+    if (!/text\/event-stream/.test(res.headers.get("content-type") || "")) {
+      throw new Error("wrong content type: " + res.headers.get("content-type"));
+    }
+    await res.text();
+  });
+
   await check("agent rejects empty payload", async () => {
     const res = await fetch(base + "/api/agent", {
       method: "POST",

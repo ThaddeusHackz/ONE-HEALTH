@@ -35,8 +35,40 @@ export function GET() {
   });
 }
 
+/**
+ * Render free instances have 512 MB of RAM. Attachments arrive as base64 inside
+ * JSON, so a naive 8 x 9 MB upload becomes ~96 MB of parsed object on a box that
+ * is already running Next. Reject early with a readable message instead.
+ */
+const MAX_BODY_BYTES = 28_000_000;
+
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as AgentRequest;
+  const declared = Number(req.headers.get("content-length") || 0);
+  if (declared > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        error: `Request too large (${(declared / 1e6).toFixed(1)} MB). Attach fewer or smaller files - the limit is ${Math.round(
+          MAX_BODY_BYTES / 1e6,
+        )} MB.`,
+      },
+      { status: 413 },
+    );
+  }
+
+  const raw = await req.text().catch(() => "");
+  if (raw.length > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      { error: `Request too large (${(raw.length / 1e6).toFixed(1)} MB). Attach fewer or smaller files.` },
+      { status: 413 },
+    );
+  }
+
+  let body: AgentRequest = {};
+  try {
+    body = raw ? (JSON.parse(raw) as AgentRequest) : {};
+  } catch {
+    return NextResponse.json({ error: "Malformed JSON body." }, { status: 400 });
+  }
   const mode: AgentMode = VALID_MODES.includes(body.mode as AgentMode) ? (body.mode as AgentMode) : "chat";
 
   const turns: AgentTurn[] = Array.isArray(body.turns)
