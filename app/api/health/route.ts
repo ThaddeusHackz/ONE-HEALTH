@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { elevenLabsKey, maskKey, openRouterKey, openWeatherKey, tavilyKey } from "@/lib/env";
+import { elevenLabsKey, maskKey, openRouterKey, openWeatherKey, tavilyKey, unsplashKey, whisperKey } from "@/lib/env";
+import { TOOLS } from "@/lib/agent/tools";
 import { archiveStats } from "@/lib/archive";
 import { lastOpenRouterError } from "@/lib/openrouter";
 import { getDB } from "@/lib/store";
@@ -13,6 +14,9 @@ export function GET() {
     forecasts: 0,
     officialSeries: 0,
     audits: 0,
+    agentConversations: 0,
+    agentMemory: 0,
+    agentFiles: 0,
   };
   try {
     const db = getDB();
@@ -22,6 +26,9 @@ export function GET() {
       forecasts: db.forecasts.length,
       officialSeries: db.officialSeries.length,
       audits: db.audits.length,
+      agentConversations: db.agentConversations.length,
+      agentMemory: db.agentMemory.length,
+      agentFiles: db.agentFiles.length,
     };
   } catch (err) {
     console.error("[health] store read skipped", (err as Error).message);
@@ -41,6 +48,9 @@ export function GET() {
       search: Boolean(tavilyKey()),
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
+      images: Boolean(unsplashKey()),
+      whisper: Boolean(whisperKey()),
+      agentTools: TOOLS.length,
       freeModelFallback: true,
       openrouterMaxModelsPerRequest: 3,
     },

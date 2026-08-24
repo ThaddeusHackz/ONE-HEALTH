@@ -58,9 +58,20 @@ export type ContentPart =
 
 export type ChatContent = string | ContentPart[];
 
+export interface ToolCallWire {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: ChatContent;
+  /** Assistant message that requested tool execution. */
+  tool_calls?: ToolCallWire[];
+  /** Tool-role message answering one specific call. */
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface ORResult {
@@ -276,6 +287,215 @@ export async function complete(opts: {
     }
     throw err;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Streaming + tool calling (used by the AI Agent tab)
+ * ------------------------------------------------------------------ */
+
+export interface ToolCallSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+export interface ToolCallDelta {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface ORStreamResult {
+  text: string;
+  model: string;
+  toolCalls: ToolCallDelta[];
+  finishReason: string;
+  reasoning?: string;
+}
+
+function parseSseLine(line: string) {
+  if (!line.startsWith("data:")) return null;
+  const payload = line.slice(5).trim();
+  if (!payload || payload === "[DONE]") return payload === "[DONE]" ? { done: true } : null;
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function postStream(
+  body: Record<string, unknown>,
+  onDelta: (text: string, reasoning: string) => void,
+  timeoutMs = 170000,
+): Promise<ORStreamResult> {
+  const key = openRouterKey();
+  if (!key) throw new RouterError("OPENROUTER_API_KEY is not set", 0);
+  if (Array.isArray(body.models) && body.models.length > MAX_MODELS_PER_REQUEST) {
+    body = { ...body, models: (body.models as string[]).slice(0, MAX_MODELS_PER_REQUEST) };
+  }
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": openRouterReferer(),
+        "X-Title": openRouterTitle(),
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal: ctrl.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      const raw = await res.text().catch(() => "");
+      let message = `OpenRouter ${res.status}`;
+      try {
+        message = (JSON.parse(raw) as { error?: { message?: string } }).error?.message || message;
+      } catch {
+        if (raw) message = `${message}: ${raw.slice(0, 200)}`;
+      }
+      throw new RouterError(message, res.status);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let text = "";
+    let reasoning = "";
+    let model = String(body.model || "openrouter");
+    let finishReason = "";
+    const calls = new Map<number, ToolCallDelta>();
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        const evt = parseSseLine(line);
+        if (!evt || (evt as { done?: boolean }).done) continue;
+        const chunk = evt as {
+          model?: string;
+          choices?: {
+            delta?: {
+              content?: string;
+              reasoning?: string;
+              tool_calls?: {
+                index?: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }[];
+            };
+            finish_reason?: string | null;
+          }[];
+        };
+        if (chunk.model) model = chunk.model;
+        const choice = chunk.choices?.[0];
+        if (!choice) continue;
+        const delta = choice.delta;
+        if (delta?.content) {
+          text += delta.content;
+          onDelta(delta.content, "");
+        }
+        if (delta?.reasoning) {
+          reasoning += delta.reasoning;
+          onDelta("", delta.reasoning);
+        }
+        for (const tc of delta?.tool_calls || []) {
+          const idx = tc.index ?? calls.size;
+          const prev = calls.get(idx) || { id: "", name: "", arguments: "" };
+          calls.set(idx, {
+            id: tc.id || prev.id,
+            name: tc.function?.name ? prev.name + tc.function.name : prev.name,
+            arguments: prev.arguments + (tc.function?.arguments || ""),
+          });
+        }
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+      }
+    }
+
+    const toolCalls = [...calls.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, c]) => c)
+      .filter((c) => c.name);
+
+    if (!text && !toolCalls.length) throw new RouterError("Empty streamed model response", 200);
+    return { text, model, toolCalls, finishReason, reasoning: reasoning || undefined };
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw new RouterError("OpenRouter stream timed out", 408);
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * Streaming completion with optional tool calling. Falls back down the same
+ * 3-slug-at-a-time model chain as `complete`, and drops `tools` for providers
+ * that reject them so a tool-capable request can never hard-fail.
+ */
+export async function completeStream(opts: {
+  messages: ChatMessage[];
+  models?: string[];
+  temperature?: number;
+  maxTokens?: number;
+  tools?: ToolCallSpec[];
+  reasoning?: boolean;
+  onDelta: (text: string, reasoning: string) => void;
+}): Promise<ORStreamResult> {
+  const models = modelChain(opts.models);
+  const withTools = (opts.tools || []).length > 0;
+  const base: Record<string, unknown> = {
+    temperature: opts.temperature ?? 0.4,
+    max_tokens: opts.maxTokens ?? 2600,
+    messages: opts.messages,
+    ...(withTools ? { tools: opts.tools, tool_choice: "auto" } : {}),
+    ...(opts.reasoning ? { reasoning: { effort: "medium" } } : {}),
+  };
+
+  const attempts: Record<string, unknown>[] = [base];
+  if (withTools) attempts.push({ ...base, tools: undefined, tool_choice: undefined });
+  attempts.push({ ...base, tools: undefined, tool_choice: undefined, models: [...FREE_MODELS, "openrouter/auto"] });
+
+  lastError = "";
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    const chain = Array.isArray(attempt.models) ? (attempt.models as string[]) : models;
+    for (const group of chunk(chain, MAX_MODELS_PER_REQUEST)) {
+      try {
+        const result = await postStream(
+          { ...attempt, models: group, model: group[0], provider: { allow_fallbacks: true, sort: "throughput" } },
+          opts.onDelta,
+        );
+        return result;
+      } catch (err) {
+        const e = err as RouterError;
+        errors.push(`${group.join(" → ")}: ${e.message}`);
+        if (isFatalAuth(e.status, e.message)) {
+          lastError = errors.join(" | ");
+          throw new RouterError(
+            `OpenRouter rejected the API key (${e.message}). Check OPENROUTER_API_KEY on Render.`,
+            e.status,
+          );
+        }
+        if (isCreditError(e.status, e.message)) {
+          lastError = errors.join(" | ");
+          throw new RouterError(e.message, 402);
+        }
+      }
+    }
+  }
+
+  lastError = errors.join(" | ");
+  throw new RouterError(lastError || "All OpenRouter models failed");
 }
 
 export async function completeWithSystem(opts: {

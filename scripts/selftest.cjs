@@ -115,10 +115,115 @@ async function json(path, opts) {
     });
     if (!res.ok || !body.text) throw new Error("field brief empty");
   });
+  await check("agent capability registry", async () => {
+    const { res, body } = await json("/api/agent");
+    if (!res.ok) throw new Error("GET /api/agent failed");
+    const names = (body.tools || []).map((t) => t.name);
+    for (const need of ["web_search", "image_generate", "vision_read", "sandbox_exec", "chart", "deep_research", "memory_save", "create_file"]) {
+      if (!names.includes(need)) throw new Error("missing tool " + need);
+    }
+    if (typeof body.configured !== "boolean") throw new Error("configured flag missing");
+  });
+
+  await check("agent nav position", async () => {
+    const { body } = await json("/api/config");
+    const hrefs = (body.nav || []).map((n) => n.href);
+    if (hrefs[0] !== "/" || hrefs[1] !== "/agent" || hrefs[2] !== "/forecast") {
+      throw new Error("nav order wrong: " + hrefs.slice(0, 4).join(","));
+    }
+  });
+
+  await check("agent memory CRUD", async () => {
+    const saved = await json("/api/agent/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fact: "Selftest: field team in Wa reports every Tuesday", tag: "project" }),
+    });
+    if (!saved.body.fact?.id) throw new Error("fact not saved");
+    const listed = await json("/api/agent/memory");
+    if (!listed.body.facts.some((f) => f.id === saved.body.fact.id)) throw new Error("fact not listed");
+    const recalled = await json("/api/agent/memory?q=Wa Tuesday");
+    if (!recalled.body.facts.some((f) => f.id === saved.body.fact.id)) throw new Error("recall missed");
+    await json("/api/agent/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id: saved.body.fact.id }),
+    });
+  });
+
+  await check("agent workspace file round-trip", async () => {
+    const name = "selftest-http.html";
+    const created = await json("/api/agent/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, content: "<h1>HTTP selftest</h1>", language: "html" }),
+    });
+    if (!created.body.file?.name) throw new Error("file not created");
+    const read = await json("/api/agent/files?name=" + name);
+    if (!/HTTP selftest/.test(read.body.file?.content || "")) throw new Error("content lost");
+    await json("/api/agent/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ delete: name }),
+    });
+  });
+
+  await check("agent stream responds without a key (offline mode)", async () => {
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turns: [{ role: "user", content: "Hello" }], mode: "chat" }),
+    });
+    if (!res.ok) throw new Error("agent stream " + res.status);
+    const text = await res.text();
+    if (!/event: result/.test(text)) throw new Error("no result frame: " + text.slice(0, 120));
+    if (!/data:/.test(text)) throw new Error("no data frames");
+  });
+
+  await check("agent rejects empty payload", async () => {
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+  });
+
+  await check("agent image endpoint validates input", async () => {
+    const res = await fetch(base + "/api/agent/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+    const models = await json("/api/agent/images");
+    if (!Array.isArray(models.body.imageModels) || models.body.imageModels.length < 3) throw new Error("no image model chain");
+  });
+
+  await check("transcribe degrades without audio", async () => {
+    const form = new FormData();
+    const res = await fetch(base + "/api/transcribe", { method: "POST", body: form });
+    if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+  });
+
+  await check("tts validates input", async () => {
+    const res = await fetch(base + "/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "" }),
+    });
+    if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+  });
+
   await check("pages", async () => {
-    for (const p of ["/", "/forecast", "/vision", "/climate", "/extracts", "/field", "/admin/login"]) {
+    for (const p of ["/", "/agent", "/forecast", "/vision", "/climate", "/extracts", "/field", "/admin/login"]) {
       const res = await fetch(base + p);
       if (!res.ok) throw new Error(`${p} ${res.status}`);
+      if (p === "/agent") {
+        const html = await res.text();
+        if (!/ONE HEALTH AI/.test(html)) throw new Error("agent page missing its title");
+        if (!/sandbox/i.test(html)) throw new Error("agent page missing the sandbox surface");
+      }
     }
   });
   if (process.exitCode) process.exit(1);

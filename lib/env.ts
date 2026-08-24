@@ -65,6 +65,35 @@ export function elevenLabsVoice(): string {
   return first("ELEVENLABS_VOICE_ID", "ELEVEN_LABS_VOICE_ID") || "21m00Tcm4TlvDq8ikWAM";
 }
 
+export function unsplashKey(): string {
+  return first("UNSPLASH_ACCESS_KEY", "UNSPLASH_API_KEY", "UNSPLASH_KEY");
+}
+
+/**
+ * Direct OpenAI key for Whisper speech-to-text. When absent we route
+ * transcription through OpenRouter's audio endpoint (same key, one bill).
+ */
+export function whisperKey(): string {
+  const direct = first("OPENAI_API_KEY", "OPENAI_WHISPER_API_KEY", "WHISPER_API_KEY");
+  // An sk-or key is not an OpenAI key - never send it to api.openai.com.
+  if (direct.startsWith("sk-or-")) return "";
+  return direct;
+}
+
+export function imageModels(): string[] {
+  const raw = first("OPENROUTER_IMAGE_MODELS", "OPENROUTER_IMAGE_MODEL");
+  if (!raw) return [];
+  return raw
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function agentMaxSteps(): number {
+  const raw = Number(first("AGENT_MAX_STEPS"));
+  return Number.isFinite(raw) && raw > 0 ? Math.min(Math.round(raw), 24) : 8;
+}
+
 export function openWeatherKey(): string {
   return first(
     "OPENWEATHER_API_KEY",

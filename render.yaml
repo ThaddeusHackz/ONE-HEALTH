@@ -1,5 +1,9 @@
 # Blueprint: free web + free Postgres so history survives web restarts.
 # Required dashboard secrets: OPENROUTER_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
+# Optional dashboard secrets that light up the AI Agent tab:
+#   TAVILY_API_KEY (live web + deep research)  UNSPLASH_ACCESS_KEY (stock photos)
+#   ELEVENLABS_API_KEY (voice out)  OPENAI_API_KEY (Whisper voice in)
+#   OPENWEATHER_API_KEY (climate pillar)  OPENROUTER_IMAGE_MODELS (image chain)
 
 databases:
   - name: one-health-db
@@ -51,4 +55,12 @@ services:
       - key: OPENWEATHER_API_KEY
         sync: false
       - key: OPENROUTER_MODELS
+        sync: false
+      - key: UNSPLASH_ACCESS_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_IMAGE_MODELS
+        sync: false
+      - key: AGENT_MAX_STEPS
         sync: false

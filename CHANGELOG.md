@@ -1,6 +1,49 @@
 # Inventory - everything built on this branch
 
-This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a0189f-one-health`.
+This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a03499-one-health-ai`.
+
+## 2026-08-24 AI Agent tab (this pass)
+
+New room: **AI Agent** at `/agent`, placed between Home and Forecast in the nav, with a
+hero button on Home. It is a general-purpose agentic desk built to the standard of
+ChatGPT / Claude / Copilot / Arena Agent Mode, routed entirely through the OpenRouter key
+with the existing multi-model fallback, and specialised for Ghana One Health.
+
+### Agent core
+- [x] `lib/agent/run.ts` - agentic loop: plan → tool calls → read results → continue, up to `AGENT_MAX_STEPS` (default 8)
+- [x] `lib/openrouter.ts` - `completeStream()` with SSE parsing, tool-call accumulation, and the 3-slug-per-request chunking reused for streaming; providers that reject `tools` are retried without them; 402 retries on the `:free` pool
+- [x] `lib/agent/tools.ts` - 22 declared tools with JSON schemas, executors and the Ghana system prompt
+- [x] `app/api/agent/route.ts` - POST = server-sent events stream (`delta`, `reasoning`, `tool_*`, `citations`, `chart`, `table`, `file`, `image`, `stock`, `plan`, `memory`, `sandbox_request`, `result`); GET = tool registry
+- [x] Client-executed tools (`sandbox_exec`, `ask_user`) pause the stream, run in the browser, and POST the result back with the slimmed transcript
+
+### Capabilities
+- [x] Live web: `web_search` (Tavily, DuckDuckGo fallback), `web_fetch` (SSRF-guarded), `deep_research` (decompose → parallel search → read pages → cited brief)
+- [x] Vision: attachments sent as `image_url` / `file` parts plus `vision_read` extraction
+- [x] Images: `image_generate` on the OpenRouter Image API (`POST /api/v1/images`, base64 out) with a chat-`modalities` fallback; `image_search` on Unsplash with a Tavily-image fallback
+- [x] Sandbox: `components/agent/SandboxFrame.tsx` - opaque-origin iframes (no `allow-same-origin`), JavaScript / HTML / CSS / SVG / JSON / Python (Pyodide), stdout + return value + errors relayed to the model
+- [x] Data: `chart` (Recharts), `table`, `compute` (hand-written parser, no `eval`), `ghana_forecast`, `ghana_national_table`, `weather_now`
+- [x] Memory: facts, conversations and workspace files in the snapshot store, keyword recall injected each turn, background distillation that refuses secrets
+- [x] Voice in: MediaRecorder → `OPENAI_API_KEY` Whisper → OpenRouter Whisper → browser Web Speech
+- [x] Voice out: ElevenLabs → OpenRouter `/audio/speech` → `speechSynthesis`
+- [x] Modes: Chat, Deep Research, Builder, Vision, One Health; per-tool toggles; model pinning; "Think deeper"
+
+### Interface
+- [x] 2027 white theme scoped to `.agent-shell` in `app/globals.css` (aurora tint, hairline borders, layered shadow, liquid motion, shimmer + caret while streaming)
+- [x] Three-pane desk: history rail with live-key status and capability inventory, conversation stream, Workspace panel (Preview / Code / Files / Console / Memory)
+- [x] Composer: attachments (drag, paste, picker), voice, tool chips, ⌘/Ctrl+Enter, starter prompts
+- [x] Export conversation as Markdown; copy and speak any answer
+
+### Platform
+- [x] `mergeNav` now re-sorts stored nav onto the canonical order, so a Postgres snapshot from an older deploy cannot pin the new tab to the end
+- [x] `/api/health` reports `images`, `whisper`, `agentTools` and agent store counts
+- [x] `/api/diagnostics` probes Unsplash, the OpenRouter image-model catalogue and Whisper
+- [x] `.env.example` + `render.yaml`: `UNSPLASH_ACCESS_KEY`, `OPENAI_API_KEY`, `OPENROUTER_IMAGE_MODELS`, `AGENT_MAX_STEPS`
+- [x] Workbook module 21 documents the agent; `docs/AI_CAPABILITIES.md` is now the agent dossier; `docs/AGENT_FORENSIC.md` records the external scan and the API contracts
+- [x] `scripts/agent-selftest.cjs` compiles `lib/` with the project's own tsc and drives the real tool executors, memory and store (24 assertions); `scripts/selftest.cjs` gains 9 HTTP checks (22 total); `npm test` runs both
+
+### Not shipped, deliberately
+- [ ] Host-side shell / computer use / MCP connectors / scheduled tasks / video generation (reasons in `docs/AGENT_FORENSIC.md` §7)
+
 
 ## 2026-08-19 live-host forensic (this pass)
 

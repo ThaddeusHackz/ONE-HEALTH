@@ -25,10 +25,12 @@ const TOC: [string, string][] = [
   ["18", "Ethics and what we refuse"],
   ["19", "Acceptance test for the class"],
   ["20", "A Monday morning on the desk"],
+  ["21", "ONE HEALTH AI Agent - the general-purpose desk"],
 ];
 
 const DESKS = [
   { href: "/", name: "Home", job: "National briefing surface. Pillars, signals, honest limits, Ghana flag bar." },
+  { href: "/agent", name: "AI Agent", job: "General-purpose agentic desk: reasoning, live web research, vision, image generation, an isolated code sandbox, charts, tables and long-term memory - all on the OpenRouter fallback chain." },
   { href: "/forecast", name: "Forecast desk", job: "Leakage-safe ensemble, 2-12 week horizon, interval not a point, official CSV overlay, delay nowcast, AI briefing." },
   { href: "/surveillance", name: "Surveillance board", job: "All 13 signals, latest count, z-score, next-week interval. Watch vs investigate." },
   { href: "/climate", name: "Climate desk", job: "Parallel OpenWeather watch-cities plus a sitrep that may mix weather, search, and the ensemble." },
@@ -148,7 +150,8 @@ export default function WorkbookPage() {
         {[
           ["16", "official regions"],
           ["13", "priority signals"],
-          ["11", "rooms (10 public + admin)"],
+          ["12", "rooms (11 public + admin)"],
+          ["22", "agent tools"],
           ["7", "forecast families"],
           ["4 wks", "default horizon"],
           ["z > 2", "investigation watch"],
@@ -681,6 +684,95 @@ export default function WorkbookPage() {
         <p className="mt-6 text-sm text-muted">
           Decision support only. Forecasts are probabilistic. Alerts are investigation prompts.
           Ghana Health Service remains the authority of record.
+        </p>
+      </article>
+
+      <article id="m21" className="mt-16 mb-8">
+        <Eyebrow n="21" />
+        <h2 className="font-display text-4xl tracking-tight">
+          ONE HEALTH AI Agent - the general-purpose desk
+        </h2>
+        <p className="mt-4 max-w-3xl leading-8">
+          Everything before this chapter is a purpose-built desk: one disease, one region, one
+          question type. The <Link href="/agent" className="text-ghana-green underline">AI Agent</Link> tab
+          (between Home and Forecast) is the opposite - a general assistant that can be pointed at
+          anything, built to the standard of the commercial assistants and specialised for Ghana
+          public health. It is the same platform, the same keys, the same honesty rules.
+        </p>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <Card
+            title="Reasoning and tools"
+            body="An agentic loop on OpenRouter: the model plans, calls tools, reads the results and keeps going - up to eight steps a turn, in groups of three model slugs so one exhausted vendor never stops the answer."
+          />
+          <Card
+            title="Live internet"
+            body="Tavily web search, single-page reads with SSRF targets blocked, and Deep Research: the question is decomposed, searched in parallel, the best pages are read, then one cited brief is written."
+          />
+          <Card
+            title="Vision and files"
+            body="Photos, PDFs, Word, Excel and CSV are attached to the turn and read by a vision model. Structured fields come back; identifiers are flagged, never repeated."
+          />
+          <Card
+            title="Images"
+            body="New imagery through the OpenRouter Image API (base64 in, no third-party account), plus real Unsplash stock photography for reports and slides."
+          />
+          <Card
+            title="In-built sandbox"
+            body="An opaque-origin iframe with no cookies, no storage and no access to the page. JavaScript, HTML, CSS, SVG, JSON and Python (Pyodide) run there; stdout, return values and errors travel back to the model so it can fix its own code."
+          />
+          <Card
+            title="Memory that compounds"
+            body="Facts are distilled at the end of a substantive turn, stored in the snapshot table, recalled by keyword into every later prompt, and visible - and deletable - in the Workspace panel."
+          />
+        </div>
+
+        <h3 className="font-display mt-8 text-2xl">The twenty-two tools</h3>
+        <p className="mt-2 text-sm text-muted">
+          Every capability below is a declared tool the model may call. Two of them
+          (<code>sandbox_exec</code>, <code>ask_user</code>) execute in the browser; the rest run
+          server-side on the Render instance.
+        </p>
+        <ul className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+          {[
+            ["web_search", "Tavily live search with citations"],
+            ["web_fetch", "Read one page; blocks metadata and loopback hosts"],
+            ["image_search", "Unsplash stock photography (Tavily fallback)"],
+            ["image_generate", "New AI images through OpenRouter"],
+            ["vision_read", "Extract structure from attached files"],
+            ["create_file", "Write a deliverable into the workspace"],
+            ["list_files", "Inspect the workspace"],
+            ["read_file", "Read a workspace file"],
+            ["delete_file", "Remove a workspace file"],
+            ["sandbox_exec", "Run code in the isolated sandbox (browser)"],
+            ["chart", "Live Recharts visualisation"],
+            ["table", "Formatted data table"],
+            ["compute", "Deterministic maths and statistics, no eval"],
+            ["ghana_forecast", "Local ensemble forecast with intervals"],
+            ["ghana_national_table", "Live national signal board"],
+            ["weather_now", "OpenWeather across Ghana watch-cities"],
+            ["deep_research", "Decompose, search, read, synthesise, cite"],
+            ["memory_save", "Store a durable fact"],
+            ["memory_recall", "Search long-term memory"],
+            ["plan", "Publish a visible step plan"],
+            ["ask_user", "Ask a clarifying question (browser)"],
+            ["current_time", "Authoritative date and time"],
+          ].map(([name, job]) => (
+            <li key={name} className="rounded-2xl border border-line bg-white px-4 py-2">
+              <code className="text-xs font-semibold text-ghana-green">{name}</code>
+              <span className="ml-2 text-muted">{job}</span>
+            </li>
+          ))}
+        </ul>
+
+        <h3 className="font-display mt-8 text-2xl">What the agent will never do</h3>
+        <p className="mt-3 leading-8">
+          The commercial assistants are free to guess. This one is not. It does not declare an
+          outbreak, does not diagnose an individual from a photograph, does not invent a source or a
+          URL, does not echo patient names, folder numbers or phone numbers, and does not present a
+          point estimate where an interval is the honest answer. When a tool fails it says so and
+          continues with what it has. Those rules live in the system prompt in
+          <code> lib/agent/tools.ts</code> and in the redaction gate in <code>lib/redact.ts</code>.
         </p>
       </article>
     </div>

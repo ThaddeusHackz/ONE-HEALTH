@@ -12,7 +12,9 @@
     "start": "node scripts/start.cjs",
     "selftest": "node scripts/selftest.cjs",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "selftest:agent": "node scripts/agent-selftest.cjs",
+    "test": "node scripts/agent-selftest.cjs && node scripts/selftest.cjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

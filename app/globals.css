@@ -87,3 +87,373 @@ body {
 .font-display {
   font-family: var(--font-display);
 }
+
+/* ================================================================== *
+ * AI AGENT - "2027 white" design system
+ * Near-white surfaces, hairline borders, layered shadow, aurora tint,
+ * liquid motion. Scoped to .agent-shell so the rest of the site is untouched.
+ * ================================================================== */
+
+.agent-shell {
+  --a-bg: #f6f8fb;
+  --a-surface: #ffffff;
+  --a-surface-2: #fbfcfe;
+  --a-line: #e8ecf3;
+  --a-line-strong: #dde3ec;
+  --a-ink: #0a1020;
+  --a-ink-2: #46526a;
+  --a-ink-3: #7b879b;
+  --a-accent: #0b7a43;
+  --a-accent-2: #0e7490;
+  --a-gold: #e8b923;
+  --a-radius: 26px;
+  --a-shadow: 0 1px 2px rgba(10, 16, 32, 0.04), 0 12px 34px rgba(10, 16, 32, 0.07);
+  --a-shadow-lg: 0 2px 4px rgba(10, 16, 32, 0.05), 0 30px 70px rgba(10, 16, 32, 0.12);
+  background: var(--a-bg);
+  color: var(--a-ink);
+  min-height: calc(100vh - 76px);
+  position: relative;
+}
+
+.agent-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 460px at 12% -8%, rgba(11, 122, 67, 0.09), transparent 60%),
+    radial-gradient(900px 420px at 92% 4%, rgba(14, 116, 144, 0.09), transparent 58%),
+    radial-gradient(760px 380px at 60% 108%, rgba(232, 185, 35, 0.12), transparent 62%);
+  z-index: 0;
+}
+
+.agent-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.a-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(22px) saturate(1.4);
+  border: 1px solid rgba(232, 236, 243, 0.9);
+  box-shadow: var(--a-shadow);
+}
+
+.a-card {
+  background: var(--a-surface);
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  box-shadow: var(--a-shadow);
+}
+
+.a-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--a-line-strong);
+  background: var(--a-surface);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--a-ink-2);
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.a-chip:hover {
+  border-color: var(--a-accent);
+  color: var(--a-accent);
+  transform: translateY(-1px);
+}
+
+.a-chip[data-on="true"] {
+  background: linear-gradient(135deg, rgba(11, 122, 67, 0.1), rgba(14, 116, 144, 0.1));
+  border-color: rgba(11, 122, 67, 0.35);
+  color: var(--a-accent);
+}
+
+.a-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  padding: 0.6rem 1.05rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+
+.a-btn-primary {
+  background: linear-gradient(135deg, #0b7a43, #0e7490);
+  color: white;
+  box-shadow: 0 10px 26px rgba(11, 122, 67, 0.28);
+}
+
+.a-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(11, 122, 67, 0.34);
+}
+
+.a-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.a-btn-ghost {
+  background: var(--a-surface);
+  border-color: var(--a-line-strong);
+  color: var(--a-ink-2);
+}
+
+.a-btn-ghost:hover {
+  color: var(--a-ink);
+  border-color: var(--a-accent);
+}
+
+.a-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cdd5e0 transparent;
+}
+
+.a-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.a-scroll::-webkit-scrollbar-thumb {
+  background: #cdd5e0;
+  border-radius: 999px;
+}
+
+.a-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.a-mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.a-bubble-user {
+  background: linear-gradient(135deg, #0b1220, #16233c);
+  color: #f4f7fb;
+  border-radius: 24px 24px 8px 24px;
+  box-shadow: 0 14px 34px rgba(10, 16, 32, 0.16);
+}
+
+.a-bubble-ai {
+  background: var(--a-surface);
+  border: 1px solid var(--a-line);
+  border-radius: 24px 24px 24px 8px;
+  box-shadow: var(--a-shadow);
+}
+
+.a-tool {
+  border-left: 2px solid var(--a-line-strong);
+  background: linear-gradient(90deg, rgba(11, 122, 67, 0.05), rgba(255, 255, 255, 0));
+}
+
+.a-tool[data-ok="false"] {
+  border-left-color: #c8102e;
+}
+
+.a-code {
+  background: #0a1020;
+  color: #e6ecf5;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.a-code pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.a-shimmer {
+  background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 37%, #eef2f7 63%);
+  background-size: 400% 100%;
+  animation: a-shimmer 1.4s ease infinite;
+  border-radius: 10px;
+}
+
+@keyframes a-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@keyframes a-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.a-in {
+  animation: a-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes a-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.a-dot {
+  animation: a-pulse 1.2s ease-in-out infinite;
+}
+
+.a-grad-text {
+  background: linear-gradient(100deg, #0b7a43, #0e7490 55%, #b8860b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.a-caret::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--a-accent);
+  border-radius: 2px;
+  animation: a-blink 1s steps(2, start) infinite;
+}
+
+@keyframes a-blink {
+  to { visibility: hidden; }
+}
+
+.a-tape {
+  background-image: linear-gradient(90deg, rgba(11, 122, 67, 0.14) 1px, transparent 1px);
+  background-size: 8px 100%;
+}
+
+.a-input {
+  width: 100%;
+  background: transparent;
+  outline: none;
+  resize: none;
+  color: var(--a-ink);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.a-input::placeholder {
+  color: var(--a-ink-3);
+}
+
+.a-seg {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--a-line);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.a-seg button {
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--a-ink-3);
+  transition: all 0.16s ease;
+}
+
+.a-seg button[data-on="true"] {
+  background: var(--a-ink);
+  color: white;
+}
+
+.a-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.a-table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--a-ink-2);
+  background: var(--a-surface-2);
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--a-line);
+  position: sticky;
+  top: 0;
+}
+
+.a-table td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--a-line);
+  color: var(--a-ink);
+}
+
+.a-table tr:hover td {
+  background: rgba(11, 122, 67, 0.04);
+}
+
+.prose-agent :where(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  margin-top: 1.1rem;
+  margin-bottom: 0.35rem;
+}
+
+.prose-agent :where(h1) { font-size: 1.5rem; }
+.prose-agent :where(h2) { font-size: 1.25rem; }
+.prose-agent :where(h3) { font-size: 1.05rem; }
+
+.prose-agent p { margin: 0.5rem 0; }
+.prose-agent ul, .prose-agent ol { margin: 0.5rem 0 0.5rem 1.15rem; }
+.prose-agent li { margin: 0.2rem 0; }
+.prose-agent ul { list-style: disc; }
+.prose-agent ol { list-style: decimal; }
+
+.prose-agent a {
+  color: var(--a-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose-agent blockquote {
+  border-left: 3px solid var(--a-gold);
+  padding-left: 0.8rem;
+  color: var(--a-ink-2);
+  margin: 0.6rem 0;
+}
+
+.prose-agent code {
+  background: #eef2f7;
+  color: #0a1020;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.prose-agent table {
+  border-collapse: collapse;
+  margin: 0.6rem 0;
+  font-size: 0.82rem;
+}
+
+.prose-agent th, .prose-agent td {
+  border: 1px solid var(--a-line);
+  padding: 0.35rem 0.6rem;
+}
+
+.prose-agent hr {
+  border: 0;
+  border-top: 1px solid var(--a-line);
+  margin: 1rem 0;
+}

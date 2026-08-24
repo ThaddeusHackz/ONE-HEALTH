@@ -61,3 +61,32 @@ export interface ActivityRow {
   detail: string;
   at: string;
 }
+
+export interface MemoryFactRow {
+  id: string;
+  text: string;
+  tag: string;
+  createdAt: string;
+  updatedAt: string;
+  hits: number;
+}
+
+export interface AgentConversationRow {
+  id: string;
+  title: string;
+  mode: string;
+  model: string;
+  messages: { role: string; content: string; model?: string; at?: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentFileRow {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+  bytes: number;
+  createdAt: string;
+  updatedAt: string;
+}

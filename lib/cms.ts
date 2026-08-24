@@ -37,6 +37,7 @@ export interface SiteContent {
 
 export const DEFAULT_NAV: NavItem[] = [
   { href: "/", label: "Home", visible: true },
+  { href: "/agent", label: "AI Agent", visible: true },
   { href: "/forecast", label: "Forecast", visible: true },
   { href: "/surveillance", label: "Surveillance", visible: true },
   { href: "/climate", label: "Climate", visible: true },
