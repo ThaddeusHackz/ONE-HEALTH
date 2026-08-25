@@ -2,6 +2,37 @@
 
 This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a03499-one-health-ai`.
 
+## 2026-08-25 (pass 3) Forensic sweep - memory safety, web-fetch caps, resume hardening
+
+### OOM vector closed: web_fetch / search reads are now capped
+- `fetchPageText` called `res.text()` with NO size cap - the agent's web_fetch
+  hands the model arbitrary URLs, and a multi-hundred-MB target would have been
+  buffered whole into RAM before being sliced to 6,000 chars. Reads now stream
+  through a shared `readCapped()` reader (2 MB page cap, 1 MB DuckDuckGo cap,
+  1 MB in lib/search.ts). Regression test proves a 40 MB URL stops at 2.0 MB.
+- `/api/transcribe` refuses audio over Whisper's own 25 MB limit (413).
+
+### Resume-path hardening
+- An attachment-bearing run that resumes after a sandbox_exec / ask_user pause
+  now force-enables vision_read exactly like a fresh turn (previously only the
+  fresh path did - a user-deselected tool list could leave a resumed Builder
+  run unable to read its files).
+
+### Audited clean (no action needed)
+- store/pg-store/pg-pool: coalesced snapshots, trimming ladder, shared pool ✓
+- auth/sign: HMAC sessions, timing-safe compares, expiry, Secure cookies ✓
+- admin routes: all gated by requireAdmin (verified 401 unauthenticated) ✓
+- forecast/nowcast: single-series stdev guarded, holdout split floored ✓
+- Diagram rendering: mermaid securityLevel "strict" + htmlLabels off + sanitise ✓
+- Markdown: react-markdown (no raw HTML) ✓
+- SSRF guards re-verified: loopback + cloud-metadata refused (new test) ✓
+- 35-check HTTP sweep: 12 pages, 13 GET APIs, POST-only routes by design,
+  upload→download→Range round trip, all 413 guards, SSE with attachments ✓
+
+### Test counts
+- Platform self-tests: 28 (transcribe 413 added) · Agent self-tests: 55 (capped
+  reader + SSRF refusal added) · typecheck · eslint 0 errors · production build
+
 ## 2026-08-25 (pass 2) Forensic scan - the vision pipeline was blind; now it sees
 
 ### CRITICAL: attachments never reached the server (fixed end to end)

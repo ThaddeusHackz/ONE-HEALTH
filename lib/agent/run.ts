@@ -100,7 +100,14 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
     emit({ type: "sandbox_result", callId: input.resume.callId, output: truncate(input.resume.output, 400) });
     return loop({
       messages,
-      input,
+      input: {
+        ...input,
+        // Same force-enable as a fresh turn: an attachment-bearing run that
+        // resumes after a sandbox pause must still be able to read its files.
+        allowedTools: hasAttachments
+          ? Array.from(new Set([...input.allowedTools, "vision_read"]))
+          : input.allowedTools,
+      },
       emit,
       toolLog,
       step: 0,

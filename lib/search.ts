@@ -1,4 +1,5 @@
 import { tavilyKey } from "./env";
+import { readCapped } from "./agent/web";
 
 export interface SearchHit {
   title: string;
@@ -66,7 +67,8 @@ async function duckDuckGo(query: string, max: number): Promise<SearchHit[]> {
       headers: { "User-Agent": "ONE-HEALTH-GHANA/1.0 (public-health research)" },
     });
     if (!res.ok) return [];
-    const html = await res.text();
+    // Capped read: never buffer an unbounded upstream response in RAM.
+    const html = await readCapped(res, 1_000_000);
     const hits: SearchHit[] = [];
     const re =
       /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gi;

@@ -1125,6 +1125,44 @@ function assert(cond, message) {
     return "route merges + validates attachments; resume re-sends them; file events guarded";
   });
 
+  await checkAsync("web: fetchPageText reads are capped - a huge URL cannot OOM the instance", async () => {
+    const web = require(path.join(compiled, "agent/web.js"));
+    const realFetch = global.fetch;
+    // A 40 MB "page" streamed in chunks; the reader must stop at ~2 MB.
+    const chunk = "A".repeat(64 * 1024);
+    let streamed = 0;
+    global.fetch = async () => {
+      const stream = new ReadableStream({
+        pull(controller) {
+          if (streamed >= 40 * 1024 * 1024) {
+            controller.close();
+            return;
+          }
+          streamed += chunk.length;
+          controller.enqueue(new TextEncoder().encode(chunk));
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "content-type": "text/html" } });
+    };
+    try {
+      const page = await web.fetchPageText("https://example.com/huge-dataset", 6000);
+      assert(streamed <= 2_100_000, `the reader consumed ${streamed} bytes - the cap did not stop it`);
+      assert(page.text.length <= 6000 + 100, `text not sliced to maxChars: ${page.text.length}`);
+    } finally {
+      global.fetch = realFetch;
+    }
+    return `40 MB URL → read stopped at ${(streamed / 1024 / 1024).toFixed(1)} MB, text sliced to 6000 chars`;
+  });
+
+  await checkAsync("web: fetchPageText refuses SSRF targets", async () => {
+    const web = require(path.join(compiled, "agent/web.js"));
+    const loopback = await web.fetchPageText("http://127.0.0.1:3000/admin", 100);
+    assert(/Refused/i.test(loopback.text), `loopback not refused: ${loopback.text.slice(0, 80)}`);
+    const metadata = await web.fetchPageText("http://169.254.169.254/latest/meta-data/", 100);
+    assert(/Refused/i.test(metadata.text), `cloud metadata not refused: ${metadata.text.slice(0, 80)}`);
+    return "loopback + cloud metadata refused";
+  });
+
   console.log(failures ? `\n${failures} AGENT SELF-TEST(S) FAILED` : "\nALL AGENT SELF-TESTS PASSED");
   process.exit(failures ? 1 : 0);
 })();

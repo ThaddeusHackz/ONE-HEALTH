@@ -223,6 +223,13 @@ async function json(path, opts) {
     if (i.status !== 413) throw new Error("ingest expected 413, got " + i.status);
   });
 
+  await check("transcribe refuses audio over the 25 MB Whisper limit", async () => {
+    const fd = new FormData();
+    fd.append("audio", new File([Buffer.alloc(26 * 1024 * 1024, 1)], "huge.webm", { type: "audio/webm" }));
+    const res = await fetch(base + "/api/transcribe", { method: "POST", body: fd });
+    if (res.status !== 413) throw new Error("expected 413, got " + res.status);
+  });
+
   await check("agent rejects malformed JSON", async () => {
     const res = await fetch(base + "/api/agent", {
       method: "POST",
