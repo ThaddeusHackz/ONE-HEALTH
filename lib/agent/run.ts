@@ -302,6 +302,27 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
       emit({ type: "tool_start", name: call.name, args: argsParsed });
 
       if (isClientTool(call.name)) {
+        /**
+         * Only ONE client call can pause the turn - the browser executes it
+         * and POSTs the result back. A model that emits several client calls
+         * in one step (two sandbox_execs, or ask_user + sandbox_exec) used to
+         * leave the others with no tool result at all, and the resumed
+         * transcript was rejected by OpenRouter with
+         * "tool_calls must be followed by tool messages". The extras are now
+         * answered with a deferred marker so the transcript stays valid, and
+         * the model re-issues them on the next step if it still needs them.
+         */
+        if (clientCall) {
+          const deferredNote = `(deferred: this ${call.name} call was not executed because another browser-side call is already paused in this step; issue it again if you still need it)`;
+          toolMessages.push({
+            role: "tool",
+            tool_call_id: wireCalls[wireCalls.length - 1].id,
+            name: call.name,
+            content: deferredNote,
+          });
+          emit({ type: "tool_result", name: call.name, output: deferredNote });
+          continue;
+        }
         clientCall = {
           callId: wireCalls[wireCalls.length - 1].id,
           name: call.name,

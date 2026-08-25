@@ -1163,6 +1163,89 @@ function assert(cond, message) {
     return "loopback + cloud metadata refused";
   });
 
+  await checkAsync("sandbox: multiple client calls in one step keep the transcript valid (pause → resume)", async () => {
+    const run = require(path.join(compiled, "agent/run.js"));
+    const realFetch = global.fetch;
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+
+    function sseToolCalls() {
+      const payload = [
+        `data: ${JSON.stringify({
+          model: "openai/gpt-4.1-mini",
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, id: "call_sb_1", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 1;" }) } },
+                  { index: 1, id: "call_sb_2", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 2;" }) } },
+                ],
+              },
+            },
+          ],
+        })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    function sseText(text) {
+      const payload = [
+        `data: ${JSON.stringify({ model: "openai/gpt-4.1-mini", choices: [{ delta: { content: text } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+
+    let phase = 0;
+    global.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.stream) {
+        phase += 1;
+        return phase === 1 ? sseToolCalls() : sseText("RESUMED_FINAL_ANSWER");
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }] }), { status: 200 });
+    };
+
+    try {
+      const first = await run.runAgent({
+        turns: [{ role: "user", content: "run both snippets" }],
+        mode: "builder",
+        allowedTools: ["sandbox_exec"],
+        emit: () => {},
+      });
+
+      // The FIRST client call pauses the turn…
+      assert(first.pending, "no pending client call");
+      assert(first.pending.callId === "call_sb_1", `paused on the wrong call: ${first.pending.callId}`);
+
+      // …and every other tool_call in the assistant message is answered, so
+      // the transcript OpenRouter receives on resume is valid.
+      const paused = first.pending.messages;
+      const assistant = [...paused].reverse().find((m) => m.role === "assistant" && Array.isArray(m.tool_calls));
+      assert(assistant, "paused transcript lost the assistant tool_call message");
+      const ids = assistant.tool_calls.map((c) => c.id);
+      assert(ids.includes("call_sb_1") && ids.includes("call_sb_2"), `expected both calls recorded, got ${ids.join(",")}`);
+      const answered = paused.filter((m) => m.role === "tool").map((m) => m.tool_call_id);
+      assert(answered.includes("call_sb_2"), `the second call was left unanswered: ${answered.join(",")}`);
+      assert(!answered.includes("call_sb_1"), "the paused call must be answered by the resume, not inline");
+      const deferred = paused.find((m) => m.role === "tool" && m.tool_call_id === "call_sb_2");
+      assert(/deferred/i.test(String(deferred.content)), "the deferred marker is missing");
+
+      // Resume with the browser's result for call_sb_1: the turn must complete.
+      const second = await run.runAgent({
+        turns: [{ role: "user", content: "run both snippets" }],
+        mode: "builder",
+        allowedTools: ["sandbox_exec"],
+        resume: { messages: first.pending.messages, callId: first.pending.callId, output: "exit: 0\nstdout:\n1", priorText: "" },
+        emit: () => {},
+      });
+      assert(/RESUMED_FINAL_ANSWER/.test(second.text), `resume did not complete: ${second.text.slice(0, 120)}`);
+      return "two client calls → one paused, one deferred; resume completes cleanly";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
   console.log(failures ? `\n${failures} AGENT SELF-TEST(S) FAILED` : "\nALL AGENT SELF-TESTS PASSED");
   process.exit(failures ? 1 : 0);
 })();

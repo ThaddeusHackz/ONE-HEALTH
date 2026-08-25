@@ -46,7 +46,10 @@ export default function FieldPage() {
     const type = res.headers.get("content-type") || "";
     if (type.includes("audio")) {
       const url = URL.createObjectURL(await res.blob());
-      void new Audio(url).play();
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = () => URL.revokeObjectURL(url);
+      void audio.play();
       return;
     }
     if ("speechSynthesis" in window) {

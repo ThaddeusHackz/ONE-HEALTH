@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { Disclaimer } from "@/components/Disclaimer";
 import { KeyStatus } from "@/components/KeyStatus";
@@ -12,6 +12,8 @@ const MAX_FILE_MB = 8;
 export default function VisionPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const previewsRef = useRef<string[]>([]);
+  previewsRef.current = previews;
   const [kind, setKind] = useState("document");
   const [prompt, setPrompt] = useState("Extract any Ghana region, disease, dates and counts. Redact identifiers.");
   const [out, setOut] = useState("");
@@ -19,6 +21,14 @@ export default function VisionPage() {
   const [meta, setMeta] = useState("");
   const [redactions, setRedactions] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  // Release preview blob URLs when the page unmounts.
+  useEffect(
+    () => () => {
+      for (const url of previewsRef.current) URL.revokeObjectURL(url);
+    },
+    [],
+  );
   const [fileError, setFileError] = useState("");
 
   function onFiles(list: FileList | null) {
@@ -32,7 +42,11 @@ export default function VisionPage() {
         : "",
     );
     setFiles(next);
-    setPreviews(next.filter((f) => f.type.startsWith("image/")).map((f) => URL.createObjectURL(f)));
+    // Release the previous preview URLs so repeated picks do not leak blobs.
+    setPreviews((prev) => {
+      for (const url of prev) URL.revokeObjectURL(url);
+      return next.filter((f) => f.type.startsWith("image/")).map((f) => URL.createObjectURL(f));
+    });
   }
 
   async function run() {

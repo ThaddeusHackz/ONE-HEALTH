@@ -2,6 +2,42 @@
 
 This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a03499-one-health-ai`.
 
+## 2026-08-25 (pass 4) Forensic sweep - multi-tool-call transcripts + blob-URL leaks
+
+### CRITICAL: a model emitting several client tool calls corrupted the transcript
+Real models DO emit two sandbox_exec calls (or ask_user + sandbox_exec) in one
+step. The loop kept only the LAST one, so the other tool_call was recorded in
+the assistant message with NO tool result - and the resumed conversation was
+rejected by OpenRouter with "tool_calls must be followed by tool messages",
+killing the whole turn with a cryptic 400.
+- [x] the FIRST client call pauses the turn; every additional one is answered
+  with an explicit deferred marker (and a visible tool_result event), keeping
+  the transcript valid; the model re-issues deferred calls if still needed
+- [x] new integration test drives the full cycle: two sandbox_exec calls → one
+  paused + one deferred → resume → final answer (transcript shape asserted
+  call-by-call)
+
+### Blob-URL leaks (every speech/preview/download path)
+- SpeakButton (agent), Intelligence speak(), Field-brief speak(): object URLs
+  from TTS audio were never revoked - revoked on end/error/stop/unmount now
+- Vision Lab image previews: previous preview URLs leaked on every re-pick;
+  now revoked on replace and on unmount
+- (Diagram PNG export, workspace downloads and exportTranscript already
+  revoked correctly - verified)
+
+### Audited clean this pass
+- compute.ts: true shunting-yard parser, no eval/Function ✓
+- tts route: 2500-char cap, audio passthrough ✓
+- admin CMS route: gated + validated, DELETE whitelists kinds ✓
+- admin page: 401 → login redirect ✓
+- or-review, archive (bounded rotation + PG trim), layout/error pages ✓
+- 33-check HTTP sweep incl. /api/chat (plain + search flag), /api/search,
+  upload→download, all 413 guards, admin gating ✓
+
+### Test counts
+- Platform self-tests: 28 · Agent self-tests: 56 (pause/resume multi-call added)
+  · typecheck · eslint 0 errors · production build · 33-check HTTP sweep
+
 ## 2026-08-25 (pass 3) Forensic sweep - memory safety, web-fetch caps, resume hardening
 
 ### OOM vector closed: web_fetch / search reads are now capped
