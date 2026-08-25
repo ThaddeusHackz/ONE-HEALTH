@@ -7,6 +7,8 @@ import {
   type ToolCallWire,
 } from "@/lib/openrouter";
 import { redactText } from "@/lib/redact";
+import { isCreditError, isFatalAuth } from "@/lib/openrouter";
+import { isGeminiQuotaError } from "./gemini";
 import { recordAudit } from "@/lib/store";
 import { AGENT_SYSTEM_PROMPT, isClientTool, runTool, toolSpecs, type ToolContext } from "./tools";
 import { distillMemory, recallFacts, upsertConversation } from "./memory";
@@ -44,7 +46,7 @@ export interface AgentRunInput {
   reasoning?: boolean;
   conversationId?: string;
   /** Client-side tool result from a previous paused turn. */
-  resume?: { messages: ChatMessage[]; callId: string; output: string };
+  resume?: { messages: ChatMessage[]; callId: string; output: string; priorText?: string };
   emit: (event: AgentEvent) => void;
 }
 
@@ -53,7 +55,13 @@ const MODE_HINT: Record<AgentMode, string> = {
   research:
     "Mode: Deep Research. Always plan, then use web_search / web_fetch / deep_research, then deliver a structured, fully cited brief.",
   builder:
-    "Mode: Builder. Deliver working artefacts: create_file for every deliverable, then verify with sandbox_exec before you claim it works. Show the preview.",
+    "Mode: Builder. You are producing a working artefact, so work like an engineer:\n" +
+    "1. plan the build, then create_file the deliverable in full - never a fragment, never a diff, never \"rest of code here\".\n" +
+    "2. Verify it before you claim it works: sandbox_exec the same code (language javascript for logic, html for a page) and read the real stdout/return value.\n" +
+    "3. If the run fails, fix the file, create_file it again and re-run. Iterate until it passes; report the exact output you observed.\n" +
+    "4. Pass filename to sandbox_exec (or use create_file) so the artefact lands in the workspace and the user can download it.\n" +
+    "5. Prefer one self-contained file (inline CSS and JS, no build step, no external assets) so the preview actually renders.\n" +
+    "6. Finish with: what you built, how you verified it, and where the file is.",
   vision:
     "Mode: Vision. The user attached files. Call vision_read first, then work from exactly what is in them. Never invent content that is not visible.",
   health:
@@ -96,6 +104,11 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
       toolLog,
       step: 0,
       maxSteps: agentMaxSteps(),
+      seedText: input.resume.priorText || "",
+      // Rebuild the tool context. Without this a resumed turn loses every
+      // attachment, so a Builder run that touches vision_read after a
+      // sandbox_exec round trip silently degrades to "no attachments".
+      ctx: contextFrom(input.turns, input.mode),
     });
   }
 
@@ -138,16 +151,25 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
     { role: "user", content: parts.length > 1 ? parts : redactedUser },
   ];
 
-  const ctx: ToolContext = {
+  const ctx: ToolContext = contextFrom(input.turns, input.mode);
+
+  return loop({ messages, input, emit, toolLog, step: 0, maxSteps: agentMaxSteps(), ctx });
+}
+
+/**
+ * Build the tool context from the turn list. Shared by the fresh turn and the
+ * sandbox resume path so the two can never drift apart.
+ */
+function contextFrom(turns: AgentTurn[], mode: AgentMode): ToolContext {
+  const attachments = turns.flatMap((t) => t.attachments || []);
+  return {
     images: attachments.filter((a) => a.kind === "image").map((a) => a.dataUrl),
     docs: attachments
       .filter((a) => a.kind === "pdf")
       .map((a) => ({ filename: a.name, file_data: a.dataUrl })),
     attachmentNotes: attachments.map((a) => a.name),
-    mode: input.mode,
+    mode,
   };
-
-  return loop({ messages, input, emit, toolLog, step: 0, maxSteps: agentMaxSteps(), ctx });
 }
 
 interface LoopArgs {
@@ -158,12 +180,15 @@ interface LoopArgs {
   step: number;
   maxSteps: number;
   ctx?: ToolContext;
+  /** Assistant text already streamed to the browser before a sandbox pause. */
+  seedText?: string;
 }
 
 async function loop(args: LoopArgs): Promise<AgentRunResult> {
   const { input, emit, toolLog } = args;
   let messages = args.messages;
-  let finalText = "";
+  let finalText = args.seedText || "";
+  let pinnedModel = input.model || "";
   let model = "";
   let reasoning = "";
 
@@ -171,23 +196,56 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
     let streamed = "";
     emit({ type: "status", text: step === 0 ? "Thinking…" : `Reasoning step ${step + 1}…` });
 
-    const result = await completeStream({
+    const streamOpts = {
       messages,
-      models: input.model ? [input.model] : undefined,
       temperature: input.temperature ?? 0.4,
       maxTokens: input.mode === "builder" ? 3600 : 2600,
       tools: toolSpecs(input.allowedTools),
       reasoning: input.reasoning,
-      onDelta: (text, think) => {
+      onDelta: (text: string, think: string) => {
         if (text) emit({ type: "delta", text });
         if (think) emit({ type: "reasoning", text: think });
       },
-    });
+    };
+
+    /**
+     * A pinned model is used on its own - no chain, no substitution - until it
+     * runs out of credit or the key stops authorising it. Only then does the
+     * turn fall back to the Auto chain, and the browser is told to move the
+     * dropdown back to "Auto (fallback chain)" so the UI matches reality.
+     *
+     * The Auto chain itself is untouched: passing `models: undefined` is exactly
+     * what an unpinned turn has always done.
+     */
+    let result;
+    if (pinnedModel) {
+      try {
+        result = await completeStream({ ...streamOpts, models: [pinnedModel] });
+      } catch (err) {
+        const e = err as { status?: number; message?: string };
+        const status = e.status || 0;
+        const message = e.message || String(err);
+        const outOfCredit = isCreditError(status, message) || isFatalAuth(status, message) || isGeminiQuotaError(status, message);
+        if (!outOfCredit) throw err;
+        const reason = isFatalAuth(status, message)
+          ? "the key stopped authorising it"
+          : "its credits ran out";
+        emit({ type: "status", text: `${pinnedModel} ${reason} - switching to the Auto fallback chain.` });
+        emit({ type: "model_reset", from: pinnedModel, reason });
+        pinnedModel = "";
+        result = await completeStream({ ...streamOpts, models: undefined });
+      }
+    } else {
+      result = await completeStream({ ...streamOpts, models: undefined });
+    }
 
     streamed = result.text;
     model = result.model;
     reasoning += result.reasoning || "";
-    finalText = streamed;
+    // Accumulate, do not overwrite. A turn that speaks, calls a tool and speaks
+    // again streams both halves to the browser; assigning here used to persist
+    // only the last one, so reloading the conversation lost the earlier text.
+    if (streamed.trim()) finalText = finalText ? `${finalText}\n\n${streamed}` : streamed;
 
     if (!result.toolCalls.length) break;
 

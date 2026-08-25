@@ -79,6 +79,8 @@ export interface ORResult {
   model: string;
   id?: string;
   tried?: string[];
+  /** Set when the answer was produced without something the caller supplied. */
+  degraded?: string;
 }
 
 let lastError = "";
@@ -144,7 +146,7 @@ function extractText(content: unknown): string {
   return "";
 }
 
-function isFatalAuth(status: number, message: string) {
+export function isFatalAuth(status: number, message: string) {
   if (status === 401) return true;
   return (
     status === 403 &&
@@ -152,7 +154,7 @@ function isFatalAuth(status: number, message: string) {
   );
 }
 
-function isCreditError(status: number, message: string) {
+export function isCreditError(status: number, message: string) {
   return status === 402 || /402|credit|balance|payment required/i.test(message);
 }
 
@@ -527,6 +529,7 @@ export async function visionAnalyze(opts: {
     })),
     ...(opts.files || []).map((file) => ({ type: "file" as const, file })),
   ];
+  const attachmentCount = opts.images.length + (opts.files?.length || 0);
   try {
     return await completeWithSystem({
       user: parts,
@@ -534,13 +537,28 @@ export async function visionAnalyze(opts: {
       models: VISION_MODELS,
       temperature: 0.2,
     });
-  } catch {
-    return completeWithSystem({
-      user: `${opts.prompt}\n\n(Vision parts omitted after first chain failed - text-only fallback.)`,
+  } catch (err) {
+    // This used to silently retry text-only, so a failed vision chain returned a
+    // confident "analysis" of an attachment the model never saw - a hallucination
+    // presented as a reading. The fallback stays (a text answer can still be
+    // useful) but it now says loudly that it could not see the file, and the
+    // caller is told the result is degraded.
+    const reason = (err as Error)?.message || "vision chain failed";
+    const result = await completeWithSystem({
+      user:
+        `${opts.prompt}\n\n` +
+        `IMPORTANT: ${attachmentCount} attachment(s) were supplied but the vision models are unavailable ` +
+        `(${reason.slice(0, 200)}). You have NOT seen the image or document. ` +
+        `Do not describe, transcribe or infer anything about its contents. ` +
+        `Say plainly that the attachment could not be read, and explain what would be needed to read it.`,
       extraSystem: opts.extraSystem,
       models: FAST_MODELS,
       temperature: 0.2,
     });
+    return {
+      ...result,
+      degraded: `Vision models unavailable - ${attachmentCount} attachment(s) were not read.`,
+    };
   }
 }
 

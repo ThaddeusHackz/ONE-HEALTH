@@ -457,3 +457,30 @@ body {
   border-top: 1px solid var(--a-line);
   margin: 1rem 0;
 }
+
+/* ------------------------------------------------------------------ */
+/* Agent diagrams (Mermaid)                                            */
+/* ------------------------------------------------------------------ */
+
+.a-diagram-canvas {
+  background-image: radial-gradient(circle at 1px 1px, rgba(10, 16, 32, 0.07) 1px, transparent 0);
+  background-size: 22px 22px;
+  touch-action: none;
+  user-select: none;
+}
+
+.a-diagram-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.a-diagram-full .a-diagram-canvas {
+  background-size: 26px 26px;
+}
+
+/* Mermaid renders edge labels and node text with inline styles; keep them
+   inside the Ghana palette without fighting the renderer. */
+.a-diagram-canvas .edgeLabel,
+.a-diagram-canvas .label {
+  color: #0a1020;
+}

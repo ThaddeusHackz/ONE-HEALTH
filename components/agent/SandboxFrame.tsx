@@ -16,7 +16,16 @@ import type { SandboxResult } from "@/lib/agent/types";
  * result back to the model so it can iterate on real output.
  */
 
-export type SandboxLanguage = "javascript" | "html" | "python" | "css" | "svg" | "json";
+export type SandboxLanguage =
+  | "javascript"
+  | "html"
+  | "python"
+  | "css"
+  | "svg"
+  | "mermaid"
+  | "json"
+  | "csv"
+  | "markdown";
 
 export interface SandboxHandle {
   run: (req: { callId: string; code: string; language: SandboxLanguage }) => Promise<SandboxResult>;
@@ -102,7 +111,18 @@ const RUNTIME = `<!doctype html>
     try {
       var result;
       if (msg.language === "python") result = await runPython(msg.code);
-      else if (msg.language === "json") {
+      else if (msg.language === "mermaid") {
+        var mLines = msg.code.split("\\n").filter(function (l) { return l.trim(); });
+        if (mLines.length < 2) throw new Error("A Mermaid diagram needs a type line and at least one content line.");
+        result = "Mermaid source accepted: " + mLines.length + " lines, first line \\"" + mLines[0].trim() + "\\". Rendered in the preview pane.";
+      } else if (msg.language === "markdown") {
+        var heads = (msg.code.match(/^#{1,6} /gm) || []).length;
+        result = "Markdown: " + msg.code.length + " chars, " + heads + " headings, " + msg.code.split("\\n").length + " lines.";
+      } else if (msg.language === "csv") {
+        var cRows = msg.code.split("\\n").filter(function (l) { return l.trim(); });
+        var cols = cRows.length ? cRows[0].split(",").length : 0;
+        result = "CSV: " + Math.max(0, cRows.length - 1) + " data rows x " + cols + " columns.";
+      } else if (msg.language === "json") {
         var parsed = JSON.parse(msg.code);
         result = "Valid JSON: " + (Array.isArray(parsed) ? parsed.length + " items" : typeof parsed) + "\\n" + fmt(parsed).slice(0, 4000);
       } else result = await runJs(msg.code);
@@ -123,12 +143,130 @@ const RUNTIME = `<!doctype html>
 </script>
 </body></html>`;
 
-const TIMEOUT_MS: Record<string, number> = { python: 180000, javascript: 45000, json: 5000 };
+const TIMEOUT_MS: Record<string, number> = {
+  python: 180000,
+  javascript: 45000,
+  json: 5000,
+  mermaid: 10000,
+  markdown: 5000,
+  csv: 5000,
+};
 
 function buildPreview(language: SandboxLanguage, code: string): string {
   if (language === "html") return code;
   if (language === "svg") {
     return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f8fb}svg{max-width:96vw;height:auto}</style></head><body>${code}</body></html>`;
+  }
+  if (language === "mermaid") {
+    // Rendered inside the opaque-origin iframe from the CDN, exactly like the
+    // Python runtime: nothing here can reach the parent page. securityLevel
+    // "strict" is the whole point - no links, no scripts, no style directives.
+    const safe = JSON.stringify(code);
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;color:#0a1020;font-family:ui-sans-serif,system-ui,sans-serif;padding:1.25rem}
+#err{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;color:#c8102e;background:#fdecee;border:1px solid #f6c9d0;border-radius:12px;padding:.75rem}
+pre.src{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;background:#0a1020;color:#e6ecf5;border-radius:12px;padding:.75rem}
+svg{max-width:100%;height:auto}
+</style></head><body><div id="out"></div><script type="module">
+const src = ${safe};
+const out = document.getElementById("out");
+try {
+  const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default;
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base",
+    flowchart: { htmlLabels: false, useMaxWidth: true },
+    themeVariables: { primaryColor: "#e8f6ee", primaryBorderColor: "#0b7a43", lineColor: "#0e7490",
+      primaryTextColor: "#0a1020", edgeLabelBackground: "#ffffff", fontFamily: "ui-sans-serif, system-ui, sans-serif" } });
+  const { svg } = await mermaid.render("sb", src);
+  out.innerHTML = svg;
+} catch (e) {
+  const msg = String((e && e.message) || e);
+  out.innerHTML = "<div id=err>Diagram did not render: " + msg.replace(/[<>&]/g, "") + "</div>";
+  const pre = document.createElement("pre");
+  pre.className = "src";
+  pre.textContent = src;
+  out.appendChild(pre);
+}
+</script></body></html>`;
+  }
+  if (language === "markdown") {
+    // Minimal, escaped renderer - the sandbox must never execute markup it is
+    // handed, so HTML is escaped before any markdown substitution happens.
+    const safe = JSON.stringify(code);
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;color:#0a1020;font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.7;padding:1.5rem;max-width:70ch}
+h1,h2,h3{font-family:Georgia,serif;letter-spacing:-.02em;margin:1.4rem 0 .5rem}
+h1{font-size:1.7rem}h2{font-size:1.3rem}h3{font-size:1.08rem}
+code{background:#f2f5f9;border-radius:6px;padding:.1rem .3rem;font-size:.9em}
+pre{background:#0a1020;color:#e6ecf5;border-radius:12px;padding:1rem;overflow:auto}
+pre code{background:none;color:inherit;padding:0}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid #e6eaf0;padding:.4rem .6rem;text-align:left;font-size:.92rem}
+th{background:#f7f8fa}blockquote{border-left:3px solid #0b7a43;margin:0;padding-left:1rem;color:#46526a}
+a{color:#0b7a43}
+</style></head><body><div id="out"></div><script>
+const src = ${safe};
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const inline = (s) => s
+  .replace(/\`([^\`]+)\`/g, "<code>$1</code>")
+  .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+  .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+  .replace(/\[([^\]]+)\]\((https?:[^)\\s]+)\)/g, '<a href="$2" rel="noreferrer noopener">$1</a>');
+const lines = esc(src).split("\\n");
+const html = [];
+let inCode = false, inList = false;
+for (const raw of lines) {
+  const line = raw;
+  if (/^\\\`\\\`\\\`/.test(line)) { html.push(inCode ? "</code></pre>" : "<pre><code>"); inCode = !inCode; continue; }
+  if (inCode) { html.push(line + "\\n"); continue; }
+  const h = /^(#{1,6})\\s+(.*)$/.exec(line);
+  if (h) { if (inList) { html.push("</ul>"); inList = false; } html.push("<h" + h[1].length + ">" + inline(h[2]) + "</h" + h[1].length + ">"); continue; }
+  if (/^\\s*[-*+]\\s+/.test(line)) {
+    if (!inList) { html.push("<ul>"); inList = true; }
+    html.push("<li>" + inline(line.replace(/^\\s*[-*+]\\s+/, "")) + "</li>");
+    continue;
+  }
+  if (/^\\s*\\d+[.)]\\s+/.test(line)) { if (inList) { html.push("</ul>"); inList = false; } html.push("<p>" + inline(line) + "</p>"); continue; }
+  if (/^\\s*>\\s?/.test(line)) { if (inList) { html.push("</ul>"); inList = false; } html.push("<blockquote>" + inline(line.replace(/^\\s*>\\s?/, "")) + "</blockquote>"); continue; }
+  if (!line.trim()) { if (inList) { html.push("</ul>"); inList = false; } continue; }
+  if (inList) { html.push("</ul>"); inList = false; }
+  html.push("<p>" + inline(line) + "</p>");
+}
+if (inCode) html.push("</code></pre>");
+if (inList) html.push("</ul>");
+document.getElementById("out").innerHTML = html.join("");
+</script></body></html>`;
+  }
+  if (language === "csv") {
+    const safe = JSON.stringify(code);
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;color:#0a1020;font-family:ui-sans-serif,system-ui,sans-serif;padding:1.25rem}
+table{border-collapse:collapse;width:100%;font-size:.85rem}
+th,td{border:1px solid #e6eaf0;padding:.4rem .6rem;text-align:left;white-space:nowrap}
+th{background:#f7f8fa;position:sticky;top:0;font-weight:600}
+tr:nth-child(even) td{background:#fbfcfe}
+.meta{font-family:ui-monospace,monospace;font-size:11px;color:#5b6575;margin-bottom:.6rem}
+</style></head><body><div id="out"></div><script>
+const src = ${safe};
+const split = (line) => {
+  const out = []; let cur = "", q = false;
+  for (const ch of line) {
+    if (ch === '"') { q = !q; continue; }
+    if (ch === "," && !q) { out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+};
+const rows = src.split("\\n").filter((l) => l.trim()).map(split);
+if (!rows.length) { document.getElementById("out").textContent = "Empty CSV."; }
+else {
+  const head = rows[0];
+  let h = '<div class="meta">' + (rows.length - 1) + ' rows x ' + head.length + ' columns</div><table><thead><tr>'
+    + head.map((c) => "<th>" + c.replace(/[<>&]/g, "") + "</th>").join("") + "</tr></thead><tbody>";
+  for (const r of rows.slice(1)) h += "<tr>" + head.map((_, i) => "<td>" + String(r[i] ?? "").replace(/[<>&]/g, "") + "</td>").join("") + "</tr>";
+  h += "</tbody></table>";
+  document.getElementById("out").innerHTML = h;
+}
+</script></body></html>`;
   }
   if (language === "css") {
     return `<!doctype html><html><head><meta charset="utf-8"><style>${code}</style></head><body>

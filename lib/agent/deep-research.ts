@@ -1,4 +1,5 @@
 import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrouter";
+import { geminiComplete, geminiConfigured } from "./gemini";
 import { agentWebSearch, fetchPageText, type AgentSearchHit } from "./web";
 import type { Citation } from "./types";
 
@@ -12,6 +13,8 @@ export interface DeepResearchReport {
 
 const MAX_SUBQUERIES = 4;
 const MAX_READ = 4;
+/** Sources offered to the model AND returned as citation chips - one numbering. */
+const MAX_CITED = 12;
 
 /**
  * Deep Research: decompose → parallel live search → read the best pages →
@@ -20,7 +23,7 @@ const MAX_READ = 4;
  */
 export async function deepResearch(opts: { question: string; focus: string }): Promise<DeepResearchReport> {
   const question = opts.question.trim();
-  const queries = openRouterConfigured() ? await decompose(question, opts.focus) : defaultQueries(question);
+  const queries = openRouterConfigured() ? await decompose(question, opts.focus) : defaultQueries(question, opts.focus);
   const limited = queries.slice(0, MAX_SUBQUERIES);
 
   const searches = await Promise.all(
@@ -40,11 +43,30 @@ export async function deepResearch(opts: { question: string; focus: string }): P
   });
 
   // Read the strongest few sources so the brief is grounded, not just titles.
-  const toRead = hits.slice(0, MAX_READ);
+  // Interleave across sub-queries: taking the first N would read N results from
+  // the first angle only and leave the other angles as bare titles.
+  const byQuery = new Map<string, (AgentSearchHit & { query: string })[]>();
+  for (const h of hits) {
+    const bucket = byQuery.get(h.query) || [];
+    bucket.push(h);
+    byQuery.set(h.query, bucket);
+  }
+  const toRead: (AgentSearchHit & { query: string })[] = [];
+  for (let i = 0; toRead.length < MAX_READ; i += 1) {
+    let added = false;
+    for (const bucket of byQuery.values()) {
+      if (bucket[i]) {
+        toRead.push(bucket[i]);
+        added = true;
+        if (toRead.length >= MAX_READ) break;
+      }
+    }
+    if (!added) break;
+  }
   const pages = await Promise.all(toRead.map((h) => fetchPageText(h.url, 4500)));
 
-  const sourcesBlock = hits
-    .slice(0, 14)
+  const cited = hits.slice(0, MAX_CITED);
+  const sourcesBlock = cited
     .map((h, i) => {
       const page = pages.find((p) => p.url === h.url);
       return `${i + 1}. ${h.title}\n   URL: ${h.url}\n   Query: ${h.query}\n   Snippet: ${h.snippet}${
@@ -59,7 +81,7 @@ export async function deepResearch(opts: { question: string; focus: string }): P
     return {
       question,
       queries: limited,
-      citations: hits.slice(0, 10).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
+      citations: cited.slice(0, 10).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
       markdown: `## Deep research (offline model layer)\n\n**Question:** ${question}\n\nLive sources were retrieved but no model key is configured to synthesise them.\n\n${hits
         .slice(0, 8)
         .map((h, i) => `${i + 1}. [${h.title}](${h.url})\n   ${h.snippet}`)
@@ -75,7 +97,7 @@ export async function deepResearch(opts: { question: string; focus: string }): P
 Write a structured, decision-useful brief from the supplied live sources only.
 Rules:
 - Markdown: a 2-3 sentence answer up front, then sections with ## headings, then "Open questions" and "Sources".
-- Cite inline as [n](url) using the numbering given. Never invent a source, statistic or URL.
+- Cite inline as [n](url) using exactly the numbering given, and only numbers that appear in SOURCES. Never invent a source, statistic or URL.
 - Where sources disagree, say so and show both.
 - Flag anything that is model knowledge rather than a cited source.
 - For health topics keep the Ghana One Health frame: human / animal / environment, and the interval-not-certainty discipline.
@@ -89,44 +111,57 @@ Rules:
     },
   ];
 
-  const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+  /**
+   * Synthesis runs on Gemini. OpenRouter is used only when no Google key is
+   * configured at all, and the brief says which engine wrote it.
+   */
+  let markdown: string;
+  let engine: string;
+  if (geminiConfigured()) {
+    const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 2200 });
+    markdown = result.text;
+    engine = `Gemini · ${result.model}`;
+  } else {
+    const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+    markdown = result.text;
+    engine = `OpenRouter fallback · ${result.model}`;
+  }
 
   return {
     question,
     queries: limited,
-    citations: hits.slice(0, 12).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
-    markdown: result.text,
+    citations: cited.map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
+    markdown: `${markdown}\n\n---\n*Synthesised by ${engine} from ${pages.length} live source(s) read.*`,
     sourcesRead: pages.length,
   };
 }
 
 async function decompose(question: string, focus: string): Promise<string[]> {
   try {
-    const result = await complete({
-      json: true,
-      temperature: 0.2,
-      maxTokens: 400,
-      messages: [
+    const decomposeMessages: ChatMessage[] = [
         {
           role: "system" as const,
           content:
             'Break a research question into 3-4 distinct, search-engine-ready sub-queries. Cover different angles (definition/current state, data or evidence, Ghana or local context when relevant, risks or counter-evidence). Return strict JSON: {"queries":["..."]}',
         },
-        { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
-      ] satisfies ChatMessage[],
-    });
+      { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
+    ];
+    const result = geminiConfigured()
+      ? await geminiComplete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages })
+      : await complete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages });
     const parsed = JSON.parse(extractJson(result.text)) as { queries?: string[] };
     const queries = (parsed.queries || []).map((q) => String(q).trim()).filter(Boolean);
-    return queries.length ? queries : defaultQueries(question);
+    return queries.length ? queries : defaultQueries(question, focus);
   } catch {
-    return defaultQueries(question);
+    return defaultQueries(question, focus);
   }
 }
 
-function defaultQueries(question: string): string[] {
+function defaultQueries(question: string, focus = ""): string[] {
   const base = question.replace(/\?$/, "");
+  const focused = focus.trim();
   return [
-    base,
+    focused ? `${base} ${focused}` : base,
     `${base} latest data statistics`,
     `${base} Ghana Africa health`,
     `${base} risks criticism limitations`,

@@ -1,13 +1,15 @@
 import { GHANA_CONTEXT, DISEASES, REGIONS } from "@/lib/ghana";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { ghanaWeather } from "@/lib/weather";
-import { visionAnalyze, type ToolCallSpec } from "@/lib/openrouter";
+import { visionAnalyze, type ChatMessage, type ToolCallSpec } from "@/lib/openrouter";
+import { geminiComplete, geminiConfigured } from "./gemini";
 import { redactText } from "@/lib/redact";
 import { recordAudit } from "@/lib/store";
 import { agentWebSearch, fetchPageText, formatAgentHits } from "./web";
 import { generateImage, unsplashSearch } from "./media";
 import { deepResearch } from "./deep-research";
 import { evaluateExpression } from "./compute";
+import { DIAGRAM_KINDS, prepareDiagram } from "./diagram";
 import {
   deleteFile,
 
@@ -17,7 +19,7 @@ import {
   saveFact,
   writeFile,
 } from "./memory";
-import type { AgentEvent, ChartSpec, TableSpec } from "./types";
+import type { AgentEvent, ChartSpec, DiagramSpec, TableSpec } from "./types";
 
 export interface ToolContext {
   images: string[];
@@ -195,17 +197,52 @@ export const TOOLS: ToolDefinition[] = [
       if (!ctx.images.length && !ctx.docs.length) {
         return fail("No attachments in this turn. Ask the user to attach the file or photo.");
       }
-      const result = await visionAnalyze({
-        prompt: String(args.question || "Describe exactly what this document or image contains."),
-        images: ctx.images,
-        files: ctx.docs,
-        extraSystem:
-          "You are the vision tool of ONE HEALTH GHANA. Extract only what is visible. Flag possible identifiers without repeating them.",
-      });
-      recordAudit({ actor: "agent", action: "vision", model: result.model, redactions: 0, detail: String(args.question).slice(0, 80) });
+      const prompt = String(args.question || "Describe exactly what this document or image contains.");
+      const extraSystem =
+        "You are the vision tool of ONE HEALTH GHANA. Extract only what is visible. Flag possible identifiers without repeating them.";
+
+      /**
+       * Vision runs on Gemini. OpenRouter is used only when no Google key is
+       * configured at all, and the answer says which provider produced it - a
+       * reader must never have to guess what actually looked at the file.
+       */
+      let engine: "gemini" | "openrouter-fallback";
+      let text: string;
+      let model: string;
+      if (geminiConfigured()) {
+        engine = "gemini";
+        const messages: ChatMessage[] = [
+          { role: "system", content: extraSystem },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              ...ctx.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+              ...ctx.docs.map((f) => ({ type: "file" as const, file: f })),
+            ],
+          },
+        ];
+        const result = await geminiComplete({ messages, temperature: 0.2, maxTokens: 2048 });
+        text = result.text;
+        model = result.model;
+      } else {
+        engine = "openrouter-fallback";
+        const result = await visionAnalyze({ prompt, images: ctx.images, files: ctx.docs, extraSystem });
+        if (result.degraded) {
+          return fail(
+            `VISION FAILED - the attachment was NOT read. ${result.degraded}\n` +
+              `No GEMINI_API_KEY is configured and the OpenRouter vision models also failed.\n` +
+              `Tell the user the file could not be opened; do not describe its contents.`,
+          );
+        }
+        text = result.text;
+        model = result.model;
+      }
+
+      recordAudit({ actor: "agent", action: "vision", model, redactions: 0, detail: String(args.question).slice(0, 80) });
       return ok(
-        `VISION (${result.model}):\n${result.text}`,
-        [{ type: "status", text: `Vision read via ${result.model}` }],
+        `VISION (${engine === "gemini" ? "Gemini" : "OpenRouter fallback"} · ${model}):\n${text}`,
+        [{ type: "status", text: `Vision read via ${model} (${engine})` }],
       );
     },
   },
@@ -280,11 +317,11 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "sandbox_exec",
     description:
-      "Run code in the isolated in-browser sandbox and get stdout, the return value and any error back. Languages: javascript (Node-ish browser JS with fetch to same origin), html (rendered live in the preview pane), python (Pyodide, first run downloads the runtime), css, svg, json. Use it to verify calculations, test code you wrote, or build a live preview.",
+      "Run code in the isolated in-browser sandbox and get stdout, the return value and any error back. Languages: javascript (browser JS in an opaque-origin iframe - no cookies, no localStorage, no access to the parent page; fetch only reaches public https URLs that allow cross-origin reads), html (rendered live in the preview pane), python (Pyodide, first run downloads the runtime), css, svg, mermaid (rendered as a diagram), json, csv (rendered as a table), markdown (rendered). Use it to verify calculations, test code you wrote, or build a live preview. Pass filename to also save the code into the workspace.",
     parameters: {
       type: "object",
       properties: {
-        language: { type: "string", enum: ["javascript", "html", "python", "css", "svg", "json"] },
+        language: { type: "string", enum: ["javascript", "html", "python", "css", "svg", "mermaid", "json", "csv", "markdown"] },
         code: { type: "string" },
         filename: { type: "string", description: "Optional: also save this into the workspace" },
       },
@@ -367,6 +404,47 @@ export const TOOLS: ToolDefinition[] = [
   },
 
   {
+    name: "diagram",
+    description:
+      "Draw a diagram that renders as crisp SVG in the conversation: flowcharts and process maps, sequence diagrams, ER/schema diagrams, state machines, Gantt timelines, mind maps, user journeys, org/architecture blocks, git graphs and quadrant charts. Pass Mermaid source. Use this for STRUCTURE and PROCESS (how things connect, what happens in what order); use chart for numeric trends and table for comparisons. Diagrams are rendered non-interactive: no links, no scripts, no styling directives.",
+    parameters: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description:
+            'Mermaid source starting with the diagram type, e.g. "flowchart TD\\n  A[Case reported] --> B{z-score > 2?}\\n  B -- yes --> C[Investigate]\\n  B -- no --> D[Routine reporting]". Quote any label that contains parentheses, brackets or colons.',
+        },
+        title: { type: "string", description: "Short caption shown above the diagram" },
+        note: { type: "string", description: "Optional source or caveat shown below" },
+      },
+      required: ["source"],
+    },
+    async run(args) {
+      const prepared = prepareDiagram(String(args.source || ""));
+      if (!prepared.ok) {
+        return fail(
+          `Diagram rejected${prepared.line ? ` at line ${prepared.line}` : ""}: ${prepared.error}\n` +
+            `Fix the source and call diagram again. Supported types: ${DIAGRAM_KINDS.map((k) => k.headers[0]).join(", ")}.`,
+        );
+      }
+      const spec: DiagramSpec = {
+        title: args.title ? String(args.title) : undefined,
+        source: prepared.source,
+        kind: prepared.kind,
+        note: args.note ? String(args.note) : undefined,
+      };
+      const lines = prepared.source.split("\n").filter((l) => l.trim()).length;
+      return ok(
+        `Rendered a ${prepared.kind.toLowerCase()} (${lines} lines of Mermaid).` +
+          (prepared.repairs.length ? `\nAuto-corrected: ${prepared.repairs.join("; ")}.` : "") +
+          `\nThe user can zoom it, read the source and download it as SVG or PNG. Do not repeat the source in your answer.`,
+        [{ type: "diagram", diagram: spec }],
+      );
+    },
+  },
+
+  {
     name: "compute",
     description:
       "Evaluate arithmetic and statistics deterministically without a sandbox: expressions with + - * / % ^, sqrt, pow, log, ln, exp, sin, cos, tan, abs, round, min, max, mean, median, stdev, percentile. Prefer this over mental maths.",
@@ -392,7 +470,7 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         disease: { type: "string", description: `One of: ${DISEASES.map((d) => d.id).join(", ")}` },
         region: { type: "string", description: `One of: national, ${REGIONS.map((r) => r.id).join(", ")}` },
-        horizon: { type: "number", description: "Weeks ahead, 1-12, default 4" },
+        horizon: { type: "number", description: "Weeks ahead to project, 1-26 (26 is about 6 months), default 4. Use 12-26 when the user asks about the coming season or quarter. A wider horizon widens the interval - always say so." },
       },
       required: ["disease"],
     },
@@ -603,8 +681,8 @@ WHAT YOU CAN DO (call tools; never pretend you did something you did not):
 - Live internet: web_search (Tavily), web_fetch, deep_research for sourced multi-step reports.
 - Vision: vision_read on any attached photo, PDF, Word, Excel or CSV.
 - Images: image_generate (new AI art/infographics) and image_search (real Unsplash stock photos).
-- Code + sandbox: create_file, sandbox_exec (JavaScript/HTML/Python in an isolated browser sandbox). Verify code you write by running it.
-- Data: chart, table, compute (deterministic maths), ghana_forecast, ghana_national_table, weather_now.
+- Code + sandbox: create_file, sandbox_exec (JavaScript/HTML/Python/Mermaid in an isolated browser sandbox). Verify code you write by running it.
+- Data: chart, table, diagram, compute (deterministic maths), ghana_forecast, ghana_national_table, weather_now.
 - Memory: memory_save / memory_recall across sessions; the user's stored facts are given to you each turn.
 - Planning: plan, ask_user.
 
@@ -612,7 +690,16 @@ HOW TO WORK
 1. For multi-step jobs call plan first, then work through it.
 2. Prefer tools over memory for anything current, numeric or verifiable. Run the code instead of guessing the result.
 3. Cite URLs inline as [n](url) when you used web results. Distinguish live sources from model knowledge.
-4. Render structure: use chart for trends, table for comparisons, create_file for deliverables, sandbox_exec for verification.
-5. Keep answers tight and skimmable: short paragraphs, headings, bullets. No preamble, no "as an AI".
-6. Health content: decision support only. Intervals, not certainty. An alert is an investigation prompt, never a confirmed outbreak. No diagnosis of an individual from a photo. Never echo patient names, folder numbers or phone numbers.
-7. If a tool fails, say so plainly and continue with what you have - do not silently invent the result.`;
+4. Pick the right visual, and pick exactly one:
+   - chart  - numbers over a category or time axis (trend, comparison of quantities).
+   - table  - a grid of values to be read cell by cell.
+   - diagram - structure and process: how parts connect, what happens in what order, who owns what.
+5. Diagrams are Mermaid. Accuracy rules for them:
+   - Only draw relationships that are in the data or the source you are citing. Never invent an arrow to make a picture look complete.
+   - Quote any label containing ( ) [ ] { } : # ; , | - e.g. B{"z-score > 2?"}.
+   - Never use the bare word "end" as a node id - it is reserved.
+   - Diagrams render non-interactive: do not emit click/link/callback directives or %%{init}%% theme blocks, they are stripped.
+   - Keep it readable: under ~20 nodes. Split a bigger system into two diagrams.
+6. Keep answers tight and skimmable: short paragraphs, headings, bullets. No preamble, no "as an AI". Do not paste Mermaid source into prose - call diagram and let it render.
+7. Health content: decision support only. Intervals, not certainty. An alert is an investigation prompt, never a confirmed outbreak. No diagnosis of an individual from a photo. Never echo patient names, folder numbers or phone numbers.
+8. If a tool fails, say so plainly and continue with what you have - do not silently invent the result.`;
