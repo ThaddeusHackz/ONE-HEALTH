@@ -1,5 +1,6 @@
 import { extractFile, type ExtractedFile } from "./files";
 import { openRouterConfigured, visionAnalyze } from "./openrouter";
+import { geminiConfigured, geminiVision } from "./agent/gemini";
 import { redactText } from "./redact";
 import type { DocumentRow } from "./records";
 import { logActivity, recordAudit, saveDB, uid } from "./store";
@@ -47,23 +48,51 @@ ${textBlock || "(no text layer - rely on vision / file parts)"}`;
   let analysis = "";
   let model = "local-extract";
 
-  if (openRouterConfigured()) {
+  /**
+   * Vision runs on the GEMINI key first - it is the platform's primary vision
+   * engine for every surface (Vision Lab, agent vision_read, One Health
+   * ingest). OpenRouter's vision chain is the fallback when no Google key is
+   * configured or Gemini is unreachable, so a document read never dies on one
+   * engine.
+   */
+  const extraSystem =
+    "Ghana Health Service document intelligence. Extract structured surveillance fields. Never diagnose an individual. Never claim certainty.";
+  let geminiFailed = "";
+  if (geminiConfigured()) {
+    try {
+      const r = await geminiVision({
+        prompt,
+        images: images.slice(0, 6),
+        files: pdfs.slice(0, 3),
+        extraSystem,
+      });
+      analysis = r.text;
+      model = `gemini:${r.model}`;
+    } catch (err) {
+      geminiFailed = (err as Error).message || "Gemini vision failed";
+    }
+  }
+
+  if (!analysis && openRouterConfigured()) {
     try {
       const r = await visionAnalyze({
         prompt,
         images: images.slice(0, 6),
         files: pdfs.slice(0, 3),
-        extraSystem:
-          "Ghana Health Service document intelligence. Extract structured surveillance fields. Never diagnose an individual. Never claim certainty.",
+        extraSystem,
       });
       analysis = r.text;
       model = r.model;
     } catch (err) {
-      analysis = `Model read failed: ${(err as Error).message}\n\nLocal extracts still stored.\n\n${textBlock.slice(0, 3000)}`;
+      analysis = `Model read failed: ${(err as Error).message}${
+        geminiFailed ? `\n(Gemini first tried: ${geminiFailed.slice(0, 160)})` : ""
+      }\n\nLocal extracts still stored.\n\n${textBlock.slice(0, 3000)}`;
       model = "extract-fallback";
     }
-  } else {
-    analysis = `OpenRouter key not loaded. Local extracts:\n\n${textBlock.slice(0, 4000) || "Images queued - connect the key to read them."}`;
+  } else if (!analysis) {
+    analysis = `No vision key loaded. Local extracts:\n\n${
+      textBlock.slice(0, 4000) || "Images queued - connect GEMINI_API_KEY to read them."
+    }`;
   }
 
   const saved: DocumentRow[] = [];

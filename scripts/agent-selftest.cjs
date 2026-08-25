@@ -462,10 +462,13 @@ function assert(cond, message) {
   check("vision: runs on Gemini, and says so when it does not", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
     assert(/if \(geminiConfigured\(\)\)/.test(src), "vision_read is not Gemini-first");
-    assert(/geminiComplete\(\{ messages/.test(src), "vision_read does not call Gemini");
-    assert(/openrouter-fallback/.test(src), "no explicit fallback labelling");
+    assert(/geminiVision\(\{/.test(src), "vision_read does not call the Gemini vision engine");
+    assert(
+      /openrouter-fallback/.test(src) && /catch \(geminiErr\)/.test(src),
+      "no explicit, guarded fallback labelling",
+    );
     assert(/Gemini" : "OpenRouter fallback/.test(src), "the answer does not name its provider");
-    return "Gemini first; OpenRouter only with no key, and labelled";
+    return "Gemini first (geminiVision); OpenRouter only as a guarded, labelled fallback";
   });
 
   check("research: decompose and synthesis both run on Gemini", () => {
@@ -646,10 +649,15 @@ function assert(cond, message) {
 
   check("render: agent store caps keep the snapshot row bounded", () => {
     const memory = require(path.join(compiled, "agent/memory.js"));
-    const big = "z".repeat(500_000);
+    const big = "z".repeat(1_000_000);
     const f = memory.writeFile("cap-check.html", big);
-    assert(f.bytes <= 120_000, `file cap not applied: ${f.bytes}`);
+    assert(f.bytes <= 800_000, `file cap not applied: ${f.bytes}`);
+    // A realistic dashboard must survive whole - no silent truncation that
+    // would leave the user downloading a broken artefact.
+    const dash = memory.writeFile("dashboard.html", "d".repeat(500_000));
+    assert(dash.bytes === 500_000, `builder artefact truncated: ${dash.bytes}`);
     memory.deleteFile("cap-check.html");
+    memory.deleteFile("dashboard.html");
     const row = memory.upsertConversation({
       messages: Array.from({ length: 400 }, (_, i) => ({ role: "user", content: `m${i} ` + "q".repeat(40_000) })),
     });
@@ -694,6 +702,548 @@ function assert(cond, message) {
     const spec = { type: "function", function: { name: "x", description: "d", parameters: {} } };
     assert(spec.type === "function");
     return "completeStream";
+  });
+
+  /* -------------------- pinned-model routing (live, stubbed HTTP) --------------------- */
+
+  const uploads = require(path.join(compiled, "agent/uploads.js"));
+
+  function sseResponse(model, text) {
+    const payload = [
+      `data: ${JSON.stringify({ model, choices: [{ delta: { content: text } }] })}`,
+      `data: ${JSON.stringify({ model, choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+      "data: [DONE]",
+    ].join("\n\n");
+    return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+  }
+
+  await checkAsync("pinned: the request carries exactly one slug - no chain, no substitution", async () => {
+    const calls = [];
+    const realFetch = global.fetch;
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    global.fetch = async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(init.body) });
+      return sseResponse("deepseek/deepseek-chat", "pinned-ok");
+    };
+    try {
+      const r = await openrouter.completeStream({
+        messages: [{ role: "user", content: "hi" }],
+        models: ["deepseek/deepseek-chat"],
+        pinned: true,
+        onDelta: () => {},
+      });
+      assert(calls.length === 1, `expected exactly one HTTP call, saw ${calls.length}`);
+      const body = calls[0].body;
+      assert(body.model === "deepseek/deepseek-chat", `body.model is ${body.model}`);
+      assert(!Array.isArray(body.models), `a pinned request must not carry a models array, got ${JSON.stringify(body.models)}`);
+      assert(/deepseek/.test(r.model), `answered model was ${r.model}`);
+      return `one call · model=${body.model} · answered=${r.model}`;
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  await checkAsync("pinned: a dead slug fails LOUDLY instead of silently answering from gpt-4.1-mini", async () => {
+    const realFetch = global.fetch;
+    const attempted = [];
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    global.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      attempted.push(body.model || (body.models || []).join("+"));
+      return new Response(JSON.stringify({ error: { message: `No allowed providers are available for ${body.model}` } }), {
+        status: 404,
+      });
+    };
+    try {
+      let threw = "";
+      try {
+        await openrouter.completeStream({
+          messages: [{ role: "user", content: "hi" }],
+          models: ["meta-llama/llama-3.3-70b-instruct:free"],
+          pinned: true,
+          onDelta: () => {},
+        });
+      } catch (err) {
+        threw = err.message;
+      }
+      assert(threw.includes("could not complete"), `expected a loud failure, got: ${threw.slice(0, 120)}`);
+      assert(
+        attempted.length > 0 && attempted.every((m) => m === "meta-llama/llama-3.3-70b-instruct:free"),
+        `the pinned slug must be the only one tried, saw: ${attempted.join(", ") || "none"}`,
+      );
+      return `failed loudly after ${attempted.length} same-slug attempt(s); never touched the Auto chain`;
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  await checkAsync("pinned: a tools rejection retries the SAME model without tools", async () => {
+    const realFetch = global.fetch;
+    const seen = [];
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    global.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      seen.push({ model: body.model, hasTools: Array.isArray(body.tools) });
+      if (body.tools) {
+        return new Response(JSON.stringify({ error: { message: "This model does not support tool calling" } }), {
+          status: 400,
+        });
+      }
+      return sseResponse(body.model, "tools-free-ok");
+    };
+    try {
+      const r = await openrouter.completeStream({
+        messages: [{ role: "user", content: "hi" }],
+        models: ["deepseek/deepseek-r1"],
+        pinned: true,
+        tools: [{ type: "function", function: { name: "t", description: "d", parameters: {} } }],
+        onDelta: () => {},
+      });
+      assert(seen.length === 2, `expected tools then no-tools on the same slug, saw ${seen.length}`);
+      assert(seen.every((s) => s.model === "deepseek/deepseek-r1"), "a different slug was tried");
+      assert(seen[0].hasTools && !seen[1].hasTools, "the retry did not drop tools");
+      assert(/tools-free-ok/.test(r.text), r.text);
+      return "same slug retried tool-free and answered";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  await checkAsync("gemini: thinking starvation (MAX_TOKENS, no text) recovers instead of 'key not working'", async () => {
+    const realFetch = global.fetch;
+    process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000000";
+    const bodies = [];
+    let call = 0;
+    global.fetch = async (url, init) => {
+      call += 1;
+      bodies.push({ url: String(url), body: JSON.parse(init.body), keyHeader: init.headers["x-goog-api-key"] });
+      if (call === 1) {
+        // The exact old failure: a 2.5 thinking model burns the whole budget
+        // on hidden reasoning and returns NO text with finishReason MAX_TOKENS.
+        return new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ thought: true, text: "internal reasoning…" }] }, finishReason: "MAX_TOKENS" }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: "GEMINI_OK" }] }, finishReason: "STOP" }] }),
+        { status: 200 },
+      );
+    };
+    try {
+      const r = await gemini.geminiComplete({
+        messages: [{ role: "user", content: "Reply with exactly GEMINI_OK" }],
+        maxTokens: 512,
+      });
+      assert(r.text === "GEMINI_OK", `got ${r.text}`);
+      const first = bodies[0].body;
+      assert(
+        first.generationConfig && first.generationConfig.thinkingConfig && first.generationConfig.thinkingConfig.thinkingBudget === 0,
+        "the first attempt must disable thinking so it cannot starve the output",
+      );
+      assert(first.generationConfig.maxOutputTokens >= 2048, "token budget too small for a thinking model");
+      assert(bodies[0].keyHeader === process.env.GEMINI_API_KEY, "key not sent via x-goog-api-key");
+      return `recovered after ${call} call(s); thinkingBudget:0 sent; answered by ${r.model}`;
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  await checkAsync("gemini: a bad key is a clear auth error, not a mystery failure", async () => {
+    const realFetch = global.fetch;
+    process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000001";
+    global.fetch = async () =>
+      new Response(JSON.stringify({ error: { message: "API key not valid. Please pass a valid API key." } }), {
+        status: 403,
+      });
+    try {
+      let msg = "";
+      try {
+        await gemini.geminiComplete({ messages: [{ role: "user", content: "hi" }] });
+      } catch (err) {
+        msg = err.message;
+      }
+      assert(/rejected the API key/.test(msg), `message was: ${msg.slice(0, 120)}`);
+      return "auth failure names the key";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  /* ------------------------- 2 GB workspace uploads ------------------------ */
+
+  await checkAsync("uploads: chunked init → append → complete round trip, capped at 2 GB", async () => {
+    const tooBig = await uploads.initUpload({ name: "huge.bin", size: 3 * 1024 ** 3 }).then(
+      () => null,
+      (err) => err.message,
+    );
+    assert(tooBig && /2 GB/.test(tooBig), `oversize guard failed: ${tooBig}`);
+
+    const payload = "region,cases\nAccra,12\nAsh,18\n"; // 29 bytes
+    const { uploadId } = await uploads.initUpload({ name: "selftest.csv", size: Buffer.byteLength(payload), mime: "text/csv" });
+    const mid = payload.slice(0, 22);
+    await uploads.appendChunk(uploadId, Buffer.from(mid, "utf8"));
+    await uploads.appendChunk(uploadId, Buffer.from(payload.slice(22), "utf8"));
+    const { entry } = await uploads.completeUpload(uploadId);
+    assert(entry.status === "complete" && entry.bytes === Buffer.byteLength(payload), `entry: ${JSON.stringify(entry)}`);
+
+    const listed = await uploads.listUploads();
+    assert(listed.some((u) => u.name === "selftest.csv" && u.bytes === Buffer.byteLength(payload)), "completed upload missing from listing");
+    const head = await uploads.readUploadHead("selftest.csv");
+    assert(head && head.text.startsWith("region,cases"), "head read failed");
+    assert(head.truncated === false, "small file should not be truncated");
+
+    const removed = await uploads.deleteUpload("selftest.csv");
+    assert(removed, "delete failed");
+    const after = await uploads.listUploads();
+    assert(!after.some((u) => u.name === "selftest.csv"), "deleted upload still listed");
+    return `${Buffer.byteLength(payload)}-byte file streamed in 2 chunks, listed, read back, deleted`;
+  });
+
+  /* --------------------------- UI wiring (source) -------------------------- */
+
+  check("agent page: the sandbox is an in-flow panel, not a click-blocking overlay", () => {
+    const page = fs.readFileSync(path.join(ROOT, "app/agent/page.tsx"), "utf8");
+    assert(!/fixed inset-0 z-\[70\]/.test(page), "the old fixed overlay drawer is still there");
+    assert(!/bg-ink\/25 backdrop-blur/.test(page), "the overlay backdrop is still there");
+    assert(/order-last[\s\S]{0,120}lg:order-none/.test(page), "the sandbox panel is not part of the page flow");
+    return "chat + workspace sit side by side in the flow; header always clickable";
+  });
+
+  check("agent page: every pinned slug the product promises is in the dropdown", () => {
+    const page = fs.readFileSync(path.join(ROOT, "app/agent/page.tsx"), "utf8");
+    const models = fs.readFileSync(path.join(ROOT, "lib/agent/models.ts"), "utf8");
+    const expected = [
+      "openai/gpt-4.1-mini",
+      "google/gemini-2.5-flash",
+      "openai/gpt-4o",
+      "google/gemini-2.5-pro",
+      "anthropic/claude-sonnet-4",
+      "deepseek/deepseek-chat",
+      "meta-llama/llama-3.3-70b-instruct:free",
+    ];
+    for (const slug of expected) assert(models.includes(slug), `${slug} missing from the catalogue`);
+    assert(/PINNABLE_MODELS/.test(page), "the dropdown does not render from the catalogue");
+    return `${expected.length} promised slugs present`;
+  });
+
+  check("deep research: Gemini synthesis is guarded, with a labelled OpenRouter fallback", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
+    assert(/catch \(geminiErr\)/.test(src), "a Gemini failure would kill the whole research run");
+    assert(/OpenRouter fallback/.test(src), "no labelled fallback engine");
+    return "Gemini first, guarded; research survives an engine outage";
+  });
+
+  check("run: attachments ride through vision_read instead of blind inline parts", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/run.ts"), "utf8");
+    assert(/vision_read BEFORE answering/.test(src), "the model is not told to read attachments first");
+    assert(!/image_url: \{ url: att\.dataUrl \}/.test(src), "base64 image parts are still inlined into chat turns");
+    assert(/"vision_read"\]|\.\.\.input\.allowedTools, "vision_read"/.test(src), "vision_read is not force-enabled");
+    return "every mode reads files through the Gemini vision tool";
+  });
+
+  check("workspace: 2 GB chunked upload endpoint and streaming download exist", () => {
+    const lib = fs.readFileSync(path.join(ROOT, "lib/agent/uploads.ts"), "utf8");
+    const upload = fs.readFileSync(path.join(ROOT, "app/api/agent/upload/route.ts"), "utf8");
+    const download = fs.readFileSync(path.join(ROOT, "app/api/agent/download/route.ts"), "utf8");
+    assert(/MAX_UPLOAD_BYTES = 2 \* 1024 \* 1024 \* 1024/.test(lib), "2 GB cap missing");
+    assert(/action/.test(upload) && /PUT/.test(upload), "chunked protocol incomplete");
+    assert(/createReadStream/.test(download) && /Content-Range/.test(download), "download does not stream with range support");
+    const files = fs.readFileSync(path.join(ROOT, "app/api/agent/files/route.ts"), "utf8");
+    assert(/listUploads/.test(files), "the Files panel does not merge uploads");
+    return "init/PUT-chunk/complete + streaming range download + merged listing";
+  });
+
+  /* ------------------- the attachment → vision pipeline (live, stubbed HTTP) ------------------- */
+
+  await checkAsync("vision pipeline: an attachment reaches the Gemini engine through the agent loop", async () => {
+    const run = require(path.join(compiled, "agent/run.js"));
+    const realFetch = global.fetch;
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000002";
+
+    const b64 = Buffer.from("PNGDATA-of-a-field-photo", "utf8").toString("base64");
+    const attachment = {
+      name: "field-photo.png",
+      mime: "image/png",
+      dataUrl: `data:image/png;base64,${b64}`,
+      kind: "image",
+      bytes: 21,
+    };
+
+    const geminiBodies = [];
+    let orToolCallSent = false;
+    global.fetch = async (url, init) => {
+      const target = String(url);
+      const body = JSON.parse(init.body);
+      if (target.includes("generativelanguage.googleapis.com")) {
+        geminiBodies.push(body);
+        return new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: "GEMINI_SAW_THE_IMAGE" }] }, finishReason: "STOP" }] }),
+          { status: 200 },
+        );
+      }
+      // OpenRouter
+      if (body.stream) {
+        if (!orToolCallSent) {
+          orToolCallSent = true;
+          const payload = [
+            `data: ${JSON.stringify({
+              model: "openai/gpt-4.1-mini",
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_vision_1",
+                        function: { name: "vision_read", arguments: JSON.stringify({ question: "What is in the attachment?" }) },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}`,
+            "data: [DONE]",
+          ].join("\n\n");
+          return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+        }
+        const payload = [
+          `data: ${JSON.stringify({ model: "openai/gpt-4.1-mini", choices: [{ delta: { content: "FINAL: GEMINI_SAW_THE_IMAGE" } }] })}`,
+          "data: [DONE]",
+        ].join("\n\n");
+        return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      // Background memory distillation (complete, non-stream).
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }] }), { status: 200 });
+    };
+
+    try {
+      const events = [];
+      const result = await run.runAgent({
+        turns: [{ role: "user", content: "What is in my photo?", attachments: [attachment] }],
+        mode: "vision",
+        allowedTools: ["vision_read", "plan"],
+        emit: (e) => events.push(e),
+      });
+
+      const visionCall = result.toolLog.find((t) => t.name === "vision_read");
+      assert(visionCall && visionCall.ok, `vision_read did not run cleanly: ${JSON.stringify(result.toolLog)}`);
+      assert(/GEMINI_SAW_THE_IMAGE/.test(result.text), `final answer missed the vision result: ${result.text.slice(0, 120)}`);
+      assert(geminiBodies.length >= 1, "the Gemini engine was never called");
+      const visionBody = JSON.stringify(geminiBodies[0]);
+      assert(visionBody.includes("inlineData") || visionBody.includes("inline_data"), "no inline data part reached Gemini");
+      assert(visionBody.includes(b64), "the attachment's bytes never reached Gemini - vision is blind");
+      assert(visionBody.includes("image/png"), "mime type lost on the way to Gemini");
+      return `photo → vision_read → Gemini inlineData → cited answer (${geminiBodies.length} Gemini call(s))`;
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  await checkAsync("vision pipeline: oversized text attachments ride to Gemini instead of vanishing", async () => {
+    process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000003";
+    const realFetch = global.fetch;
+    const geminiBodies = [];
+    global.fetch = async (url, init) => {
+      geminiBodies.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: "CSV_READ_OK" }] }, finishReason: "STOP" }] }),
+        { status: 200 },
+      );
+    };
+    try {
+      const csv = `district,cases\n${Array.from({ length: 1200 }, (_, i) => `D${i},${i % 50}`).join("\n")}`;
+      const csvB64 = Buffer.from(csv, "utf8").toString("base64");
+      const outcome = await tools.runTool(
+        "vision_read",
+        { question: "Which district has the most cases?" },
+        {
+          images: [],
+          docs: [{ filename: "weekly.csv", file_data: `data:text/csv;base64,${csvB64}` }],
+          attachmentNotes: ["weekly.csv"],
+          mode: "vision",
+        },
+      );
+      assert(outcome.ok, `vision_read failed: ${outcome.output.slice(0, 160)}`);
+      assert(/CSV_READ_OK/.test(outcome.output), outcome.output.slice(0, 160));
+      const sent = JSON.stringify(geminiBodies[0]);
+      assert(sent.includes(csvB64.slice(0, 40)), "the CSV bytes never reached Gemini");
+      assert(sent.includes("text/csv"), "CSV mime lost on the way to Gemini");
+      return "5 KB+ CSV read by Gemini inline (was invisible before the fix)";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  await checkAsync("vision pipeline: over-budget attachments are skipped loudly, never silently", async () => {
+    process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000004";
+    const realFetch = global.fetch;
+    global.fetch = async () =>
+      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "VISION_OK" }] }, finishReason: "STOP" }] }), {
+        status: 200,
+      });
+    try {
+      const huge = "A".repeat(9_500_000);
+      const outcome = await tools.runTool(
+        "vision_read",
+        { question: "Read these" },
+        {
+          images: [`data:image/png;base64,${huge}`, `data:image/png;base64,${huge}`],
+          docs: [],
+          attachmentNotes: ["big1.png", "big2.png"],
+          mode: "vision",
+        },
+      );
+      assert(outcome.ok, `expected a partial read, got: ${outcome.output.slice(0, 160)}`);
+      assert(/exceeded the inline size budget and were NOT read/.test(outcome.output), "the skip was not announced");
+      return "one image read, the other explicitly reported as skipped";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  check("client: attachments ride along on sandbox resumes, and file events cannot crash the list", () => {
+    const src = fs.readFileSync(path.join(ROOT, "components/agent/useAgent.ts"), "utf8");
+    const resumeSends = (src.match(/attachments: turnAttachmentsRef\.current/g) || []).length;
+    assert(resumeSends >= 2, `resume requests must carry the turn's attachments (found ${resumeSends})`);
+    assert(/if \(parsed\.file && typeof \(parsed\.file as WorkspaceFile\)\.name === "string"\)/.test(src), "unguarded file event can push undefined into the file list");
+    const route = fs.readFileSync(path.join(ROOT, "app/api/agent/route.ts"), "utf8");
+    assert(/Array\.isArray\(body\.attachments\)/.test(route), "the API route still ignores top-level attachments - vision is blind");
+    assert(/validAttachment/.test(route), "attachments are not validated/capped server-side");
+    return "route merges + validates attachments; resume re-sends them; file events guarded";
+  });
+
+  await checkAsync("web: fetchPageText reads are capped - a huge URL cannot OOM the instance", async () => {
+    const web = require(path.join(compiled, "agent/web.js"));
+    const realFetch = global.fetch;
+    // A 40 MB "page" streamed in chunks; the reader must stop at ~2 MB.
+    const chunk = "A".repeat(64 * 1024);
+    let streamed = 0;
+    global.fetch = async () => {
+      const stream = new ReadableStream({
+        pull(controller) {
+          if (streamed >= 40 * 1024 * 1024) {
+            controller.close();
+            return;
+          }
+          streamed += chunk.length;
+          controller.enqueue(new TextEncoder().encode(chunk));
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "content-type": "text/html" } });
+    };
+    try {
+      const page = await web.fetchPageText("https://example.com/huge-dataset", 6000);
+      assert(streamed <= 2_100_000, `the reader consumed ${streamed} bytes - the cap did not stop it`);
+      assert(page.text.length <= 6000 + 100, `text not sliced to maxChars: ${page.text.length}`);
+    } finally {
+      global.fetch = realFetch;
+    }
+    return `40 MB URL → read stopped at ${(streamed / 1024 / 1024).toFixed(1)} MB, text sliced to 6000 chars`;
+  });
+
+  await checkAsync("web: fetchPageText refuses SSRF targets", async () => {
+    const web = require(path.join(compiled, "agent/web.js"));
+    const loopback = await web.fetchPageText("http://127.0.0.1:3000/admin", 100);
+    assert(/Refused/i.test(loopback.text), `loopback not refused: ${loopback.text.slice(0, 80)}`);
+    const metadata = await web.fetchPageText("http://169.254.169.254/latest/meta-data/", 100);
+    assert(/Refused/i.test(metadata.text), `cloud metadata not refused: ${metadata.text.slice(0, 80)}`);
+    return "loopback + cloud metadata refused";
+  });
+
+  await checkAsync("sandbox: multiple client calls in one step keep the transcript valid (pause → resume)", async () => {
+    const run = require(path.join(compiled, "agent/run.js"));
+    const realFetch = global.fetch;
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+
+    function sseToolCalls() {
+      const payload = [
+        `data: ${JSON.stringify({
+          model: "openai/gpt-4.1-mini",
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, id: "call_sb_1", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 1;" }) } },
+                  { index: 1, id: "call_sb_2", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 2;" }) } },
+                ],
+              },
+            },
+          ],
+        })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    function sseText(text) {
+      const payload = [
+        `data: ${JSON.stringify({ model: "openai/gpt-4.1-mini", choices: [{ delta: { content: text } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+
+    let phase = 0;
+    global.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.stream) {
+        phase += 1;
+        return phase === 1 ? sseToolCalls() : sseText("RESUMED_FINAL_ANSWER");
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }] }), { status: 200 });
+    };
+
+    try {
+      const first = await run.runAgent({
+        turns: [{ role: "user", content: "run both snippets" }],
+        mode: "builder",
+        allowedTools: ["sandbox_exec"],
+        emit: () => {},
+      });
+
+      // The FIRST client call pauses the turn…
+      assert(first.pending, "no pending client call");
+      assert(first.pending.callId === "call_sb_1", `paused on the wrong call: ${first.pending.callId}`);
+
+      // …and every other tool_call in the assistant message is answered, so
+      // the transcript OpenRouter receives on resume is valid.
+      const paused = first.pending.messages;
+      const assistant = [...paused].reverse().find((m) => m.role === "assistant" && Array.isArray(m.tool_calls));
+      assert(assistant, "paused transcript lost the assistant tool_call message");
+      const ids = assistant.tool_calls.map((c) => c.id);
+      assert(ids.includes("call_sb_1") && ids.includes("call_sb_2"), `expected both calls recorded, got ${ids.join(",")}`);
+      const answered = paused.filter((m) => m.role === "tool").map((m) => m.tool_call_id);
+      assert(answered.includes("call_sb_2"), `the second call was left unanswered: ${answered.join(",")}`);
+      assert(!answered.includes("call_sb_1"), "the paused call must be answered by the resume, not inline");
+      const deferred = paused.find((m) => m.role === "tool" && m.tool_call_id === "call_sb_2");
+      assert(/deferred/i.test(String(deferred.content)), "the deferred marker is missing");
+
+      // Resume with the browser's result for call_sb_1: the turn must complete.
+      const second = await run.runAgent({
+        turns: [{ role: "user", content: "run both snippets" }],
+        mode: "builder",
+        allowedTools: ["sandbox_exec"],
+        resume: { messages: first.pending.messages, callId: first.pending.callId, output: "exit: 0\nstdout:\n1", priorText: "" },
+        emit: () => {},
+      });
+      assert(/RESUMED_FINAL_ANSWER/.test(second.text), `resume did not complete: ${second.text.slice(0, 120)}`);
+      return "two client calls → one paused, one deferred; resume completes cleanly";
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
   });
 
   console.log(failures ? `\n${failures} AGENT SELF-TEST(S) FAILED` : "\nALL AGENT SELF-TESTS PASSED");

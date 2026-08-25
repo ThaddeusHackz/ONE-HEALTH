@@ -221,7 +221,9 @@ export function AgentMessage({
                     return <Diagram key={i} spec={event.diagram as DiagramSpec} live={live} />;
                   }
                   if (event.type === "file") {
-                    return <FileCard key={i} file={event.file as WorkspaceFile} onOpen={() => onOpenFile?.(event.file as WorkspaceFile)} />;
+                    const file = event.file as WorkspaceFile | undefined;
+                    if (!file || typeof file.name !== "string") return null;
+                    return <FileCard key={i} file={file} onOpen={() => onOpenFile?.(file)} />;
                   }
                   if (event.type === "image") {
                     const image = event.image as { dataUrl: string; prompt: string; model: string };

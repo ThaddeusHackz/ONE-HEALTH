@@ -25,6 +25,11 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "audio file required" }, { status: 400 });
   }
+  // Whisper's own limit is 25 MB; refusing anything larger protects the
+  // instance from a stray oversized upload before it is forwarded twice.
+  if (file.size > 25 * 1024 * 1024) {
+    return NextResponse.json({ error: `Audio too large (${(file.size / 1e6).toFixed(1)} MB) - keep clips under 25 MB.` }, { status: 413 });
+  }
   const language = String(form.get("language") || "").trim();
   const direct = whisperKey();
   const router = openRouterKey();

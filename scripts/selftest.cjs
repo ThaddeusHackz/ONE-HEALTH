@@ -181,11 +181,52 @@ async function json(path, opts) {
   });
 
   await check("agent rejects an oversized body (512MB Render instance)", async () => {
+    // The cap is 40 MB (5 attachments × 6 MB base64); anything larger belongs
+    // in the workspace through the chunked 2 GB upload endpoint.
     const res = await fetch(base + "/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turns: [{ role: "user", content: "x".repeat(30_000_000) }] }),
+      body: JSON.stringify({ turns: [{ role: "user", content: "x".repeat(42_000_000) }] }),
     });
+    if (res.status !== 413) throw new Error("expected 413, got " + res.status);
+  });
+
+  await check("agent accepts top-level attachments (the vision pipeline)", async () => {
+    // useAgent sends attachments as a top-level array; the route must merge
+    // them onto the last user turn or vision_read runs blind.
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        turns: [{ role: "user", content: "what is in my photo?" }],
+        mode: "vision",
+        attachments: [
+          { name: "photo.png", mime: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=", kind: "image", bytes: 5 },
+          { junk: true },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error("status " + res.status);
+    const text = await res.text();
+    if (!/event: result/.test(text)) throw new Error("no result frame: " + text.slice(0, 120));
+  });
+
+  await check("vision and ingest endpoints refuse oversized files", async () => {
+    const big = new File([Buffer.alloc(9 * 1024 * 1024, 1)], "huge.png", { type: "image/png" });
+    const fd = new FormData();
+    fd.append("files", big);
+    const v = await fetch(base + "/api/vision", { method: "POST", body: fd });
+    if (v.status !== 413) throw new Error("vision expected 413, got " + v.status);
+    const fd2 = new FormData();
+    fd2.append("files", big);
+    const i = await fetch(base + "/api/ingest", { method: "POST", body: fd2 });
+    if (i.status !== 413) throw new Error("ingest expected 413, got " + i.status);
+  });
+
+  await check("transcribe refuses audio over the 25 MB Whisper limit", async () => {
+    const fd = new FormData();
+    fd.append("audio", new File([Buffer.alloc(26 * 1024 * 1024, 1)], "huge.webm", { type: "audio/webm" }));
+    const res = await fetch(base + "/api/transcribe", { method: "POST", body: fd });
     if (res.status !== 413) throw new Error("expected 413, got " + res.status);
   });
 
@@ -196,6 +237,36 @@ async function json(path, opts) {
       body: "{not json",
     });
     if (res.status !== 400) throw new Error("expected 400, got " + res.status);
+  });
+
+  await check("every JSON route caps its request body", async () => {
+    const big = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(9_000_000) }] });
+    const chat = await fetch(base + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: big,
+    });
+    if (chat.status !== 413) throw new Error("chat expected 413, got " + chat.status);
+    const bigQuery = JSON.stringify({ query: "y".repeat(1_000_000) });
+    const search = await fetch(base + "/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: bigQuery,
+    });
+    if (search.status !== 413) throw new Error("search expected 413, got " + search.status);
+    const mem = await fetch(base + "/api/agent/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fact: "z".repeat(1_000_000) }),
+    });
+    if (mem.status !== 413) throw new Error("memory expected 413, got " + mem.status);
+    // A valid small body must still pass through the same reader.
+    const ok = await fetch(base + "/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "malaria" }),
+    });
+    if (!ok.ok) throw new Error("small body rejected: " + ok.status);
   });
 
   await check("streaming responses are not compressed", async () => {

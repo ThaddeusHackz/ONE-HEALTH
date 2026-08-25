@@ -26,6 +26,7 @@ export const GEMINI_MODEL_CHAIN = [
   "gemini-2.5-flash",
   "gemini-2.5-pro",
   "gemini-2.0-flash",
+  "gemini-2.5-flash-lite",
   "gemini-1.5-pro",
 ];
 
@@ -161,6 +162,30 @@ export function hasAttachments(messages: ChatMessage[]): boolean {
   );
 }
 
+/**
+ * gemini-2.5+ are *thinking* models: hidden reasoning runs FIRST and consumes
+ * the output-token budget. With a small maxOutputTokens the API happily returns
+ * a candidate with finishReason MAX_TOKENS and NO text - which used to look
+ * exactly like "the Gemini key does not work" even though the key was fine on
+ * other platforms. Disabling the thinking budget (or giving it headroom) fixes
+ * it. gemini-2.0 and older reject thinkingConfig, so it is added selectively.
+ */
+function supportsThinking(model: string): boolean {
+  return /(^|[-/.])(2\.5|2\.6|3\.\d+|flash-latest|pro-latest)/i.test(model);
+}
+
+function buildBody(opts: GeminiCompleteOptions, system: string, contents: unknown, maxTokens: number, disableThinking: boolean): Record<string, unknown> {
+  const generationConfig: Record<string, unknown> = {
+    temperature: opts.temperature ?? 0.3,
+    maxOutputTokens: maxTokens,
+    ...(opts.json ? { responseMimeType: "application/json" } : {}),
+  };
+  if (disableThinking) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  const body: Record<string, unknown> = { contents, generationConfig };
+  if (system) body.systemInstruction = { parts: [{ text: system }] };
+  return body;
+}
+
 async function callOnce(
   model: string,
   body: Record<string, unknown>,
@@ -192,6 +217,10 @@ async function callOnce(
     const candidates = (json.candidates as { content?: { parts?: GeminiPart[] } }[]) || [];
     const parts = candidates[0]?.content?.parts || [];
     const text = parts
+      // Gemini 2.5+ return hidden reasoning as parts flagged `thought: true`.
+      // Those are NOT the answer - including them both leaks chain-of-thought
+      // and makes a thinking-only response look like real output.
+      .filter((p) => !(p as { thought?: boolean }).thought)
       .map((p) => p.text || "")
       .join("")
       .trim();
@@ -213,21 +242,17 @@ async function callOnce(
 /**
  * Walk the Gemini model chain. An auth failure stops immediately - retrying a
  * bad key against eight models just burns latency. A quota failure moves on.
+ *
+ * Each model is tried with thinking disabled first (fast, deterministic, no
+ * MAX_TOKENS starvation); if that is rejected the same model is retried once
+ * with plain generation config before moving on.
  */
 export async function geminiComplete(opts: GeminiCompleteOptions): Promise<GeminiResult> {
   const key = geminiKey();
   if (!key) throw new GeminiError("GEMINI_API_KEY is not set", 0);
 
   const { system, contents } = toGeminiContents(opts.messages);
-  const body: Record<string, unknown> = {
-    contents,
-    generationConfig: {
-      temperature: opts.temperature ?? 0.3,
-      maxOutputTokens: opts.maxTokens ?? 2048,
-      ...(opts.json ? { responseMimeType: "application/json" } : {}),
-    },
-  };
-  if (system) body.systemInstruction = { parts: [{ text: system }] };
+  const maxTokens = Math.max(opts.maxTokens ?? 4096, 2048);
 
   const chain = opts.models?.length ? opts.models : modelChain();
   const tried: string[] = [];
@@ -236,26 +261,36 @@ export async function geminiComplete(opts: GeminiCompleteOptions): Promise<Gemin
 
   for (const model of chain) {
     tried.push(model);
-    try {
-      const result = await callOnce(model, body, key, 90000);
-      return sawQuota
-        ? { ...result, degraded: `Earlier Gemini models were out of quota; answered by ${model}.` }
-        : result;
-    } catch (err) {
-      const e = err as GeminiError;
-      lastError = e.message || String(err);
-      if (isGeminiAuthError(e.status, lastError)) {
-        throw new GeminiError(
-          `Gemini rejected the API key (${lastError.slice(0, 160)}). Check GEMINI_API_KEY.`,
-          e.status,
-          model,
-        );
+    const canDisable = supportsThinking(model);
+    const attempts: Record<string, unknown>[] = [
+      buildBody(opts, system, contents, maxTokens, canDisable),
+      buildBody(opts, system, contents, Math.min(maxTokens * 2, 16384), false),
+    ];
+    for (const body of attempts) {
+      try {
+        const result = await callOnce(model, body, key, 90000);
+        return sawQuota
+          ? { ...result, degraded: `Earlier Gemini models were out of quota; answered by ${model}.` }
+          : result;
+      } catch (err) {
+        const e = err as GeminiError;
+        lastError = e.message || String(err);
+        if (isGeminiAuthError(e.status, lastError)) {
+          throw new GeminiError(
+            `Gemini rejected the API key (${lastError.slice(0, 160)}). Check GEMINI_API_KEY.`,
+            e.status,
+            model,
+          );
+        }
+        if (isGeminiQuotaError(e.status, lastError)) {
+          sawQuota = true;
+          break; // next model
+        }
+        // MAX_TOKENS starvation or a rejected thinkingConfig: the second
+        // attempt (no thinkingConfig, larger budget) handles both. Anything
+        // else (bad slug, transient 500) also falls through to the retry, and
+        // then to the next model in the chain.
       }
-      if (isGeminiQuotaError(e.status, lastError)) {
-        sawQuota = true;
-        continue;
-      }
-      // Anything else (bad model slug, transient 500) also moves on.
     }
   }
 
@@ -263,4 +298,56 @@ export async function geminiComplete(opts: GeminiCompleteOptions): Promise<Gemin
     `Every Gemini model failed. Tried: ${tried.join(", ")}. Last error: ${lastError.slice(0, 220)}`,
     0,
   );
+}
+
+/**
+ * Canonical Gemini VISION entry point. Images and documents travel as
+ * inlineData parts; thinking is disabled so a photo read can never starve on
+ * its output budget. Used by the agent's vision_read tool, the Vision Lab and
+ * any attachment flow - Gemini is the primary vision engine platform-wide.
+ */
+export async function geminiVision(opts: {
+  prompt: string;
+  images: string[];
+  files?: { filename: string; file_data: string }[];
+  extraSystem?: string;
+  maxTokens?: number;
+}): Promise<GeminiResult> {
+  const parts: ContentPart[] = [
+    { type: "text", text: opts.prompt },
+    ...opts.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+    ...(opts.files || []).map((file) => ({ type: "file" as const, file })),
+  ];
+  const messages: ChatMessage[] = [
+    ...(opts.extraSystem ? [{ role: "system" as const, content: opts.extraSystem }] : []),
+    { role: "user", content: parts },
+  ];
+  return geminiComplete({
+    messages,
+    temperature: 0.2,
+    maxTokens: opts.maxTokens ?? 4096,
+    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  });
+}
+
+/** Liveness probe for /api/diagnostics - one tiny generateContent call. */
+export async function geminiPing(): Promise<{ ok: boolean; model: string; detail: string }> {
+  const key = geminiKey();
+  if (!key) return { ok: false, model: "", detail: "GEMINI_API_KEY is not set" };
+  try {
+    const result = await geminiComplete({
+      messages: [{ role: "user", content: "Reply with exactly GEMINI_OK" }],
+      temperature: 0,
+      maxTokens: 2048,
+      models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"],
+    });
+    const ok = /GEMINI_OK/i.test(result.text);
+    return {
+      ok,
+      model: result.model,
+      detail: ok ? `${result.model} answered GEMINI_OK` : `unexpected reply: ${result.text.slice(0, 80)}`,
+    };
+  } catch (err) {
+    return { ok: false, model: "", detail: (err as Error).message.slice(0, 240) };
+  }
 }

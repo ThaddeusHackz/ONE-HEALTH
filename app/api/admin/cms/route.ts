@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/body";
 import { requireAdmin } from "@/lib/auth";
 import { getDB, logActivity, saveDB } from "@/lib/store";
 import type { NavItem, SiteContent } from "@/lib/cms";
@@ -24,7 +25,9 @@ export function GET(req: Request) {
 export async function PUT(req: Request) {
   const admin = requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 2_000_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     content?: Partial<SiteContent>;
     nav?: NavItem[];
     knowledge?: KnowledgeItem[];

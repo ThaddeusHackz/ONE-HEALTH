@@ -75,13 +75,19 @@ export interface Citation {
 }
 
 export interface WorkspaceFile {
-  id: string;
+  id?: string;
   name: string;
   language: string;
-  content: string;
+  content?: string;
   updatedAt: string;
   /** Present on server listings, which omit the body. */
   bytes?: number;
+  /** Large disk-backed upload (up to 2 GB) rather than an in-DB artefact. */
+  kind?: "upload";
+  /** Uploads: true when it can be opened as text in the editor. */
+  textLike?: boolean;
+  /** Uploads opened in the editor: the body was cut at the preview head. */
+  truncated?: boolean;
 }
 
 export type AgentMode = "chat" | "research" | "builder" | "vision" | "health";

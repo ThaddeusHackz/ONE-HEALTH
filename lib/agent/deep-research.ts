@@ -112,19 +112,41 @@ Rules:
   ];
 
   /**
-   * Synthesis runs on Gemini. OpenRouter is used only when no Google key is
-   * configured at all, and the brief says which engine wrote it.
+   * Synthesis runs on Gemini (the GEMINI_API_KEY is the deep-research engine).
+   * OpenRouter is the fallback: when no Google key is configured at all OR
+   * Gemini is unreachable - a research run must never die on one engine.
+   * The brief says which engine wrote it.
    */
   let markdown: string;
   let engine: string;
   if (geminiConfigured()) {
-    const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 2200 });
-    markdown = result.text;
-    engine = `Gemini · ${result.model}`;
+    try {
+      const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 6144 });
+      markdown = result.text;
+      engine = `Gemini · ${result.model}`;
+    } catch (geminiErr) {
+      const reason = (geminiErr as Error).message || "Gemini failed";
+      try {
+        const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+        markdown =
+          result.text +
+          `\n\n> Note: the Gemini research engine was unreachable (${reason.slice(
+            0,
+            140,
+          )}); this brief was synthesised on the OpenRouter fallback chain.`;
+        engine = `OpenRouter fallback · ${result.model}`;
+      } catch (orErr) {
+        throw new Error(
+          `Deep research synthesis failed on both engines. Gemini: ${reason.slice(0, 140)} | OpenRouter: ${(
+            (orErr as Error).message || ""
+          ).slice(0, 140)}`,
+        );
+      }
+    }
   } else {
     const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
     markdown = result.text;
-    engine = `OpenRouter fallback · ${result.model}`;
+    engine = `OpenRouter · ${result.model}`;
   }
 
   return {
@@ -146,9 +168,21 @@ async function decompose(question: string, focus: string): Promise<string[]> {
         },
       { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
     ];
-    const result = geminiConfigured()
-      ? await geminiComplete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages })
-      : await complete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages });
+    /**
+     * Decomposition prefers Gemini (the configured deep-research engine) and
+     * falls back to OpenRouter; if both fail the deterministic queries below
+     * keep the research run alive.
+     */
+    let result;
+    if (geminiConfigured()) {
+      try {
+        result = await geminiComplete({ json: true, temperature: 0.2, maxTokens: 2048, messages: decomposeMessages });
+      } catch {
+        result = await complete({ json: true, temperature: 0.2, maxTokens: 700, messages: decomposeMessages });
+      }
+    } else {
+      result = await complete({ json: true, temperature: 0.2, maxTokens: 700, messages: decomposeMessages });
+    }
     const parsed = JSON.parse(extractJson(result.text)) as { queries?: string[] };
     const queries = (parsed.queries || []).map((q) => String(q).trim()).filter(Boolean);
     return queries.length ? queries : defaultQueries(question, focus);

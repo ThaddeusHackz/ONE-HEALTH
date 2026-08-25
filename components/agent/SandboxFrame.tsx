@@ -133,6 +133,7 @@ const RUNTIME = `<!doctype html>
   }
 
   window.addEventListener("message", function (ev) {
+    if (ev.source !== parent) return; // only the parent page may start a run
     var d = ev.data;
     if (!d || !d.__ohg_run) return;
     handle(d);
@@ -325,6 +326,11 @@ export function SandboxFrame({
 
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
+      // Only trust messages that came from one of our own sandbox frames -
+      // never a random window that embedded this page.
+      const runner = runnerRef.current?.contentWindow;
+      const previewFrame = document.querySelector<HTMLIFrameElement>('iframe[title="Sandbox preview"]');
+      if (ev.source !== runner && ev.source !== previewFrame?.contentWindow) return;
       const data = ev.data as BridgeMessage;
       if (!data || !data.__ohg) return;
       if (data.type === "ready") {

@@ -4,6 +4,14 @@ import { analyzeUploads } from "@/lib/analyze";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+/**
+ * Inline reads are capped so a 512 MB Render instance can never be OOM-killed
+ * by one huge upload (each file is fully buffered and base64-expanded). Files
+ * larger than this belong in the workspace through the chunked 2 GB upload.
+ */
+const MAX_FILES = 8;
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
+
 export async function POST(req: Request) {
   const contentType = req.headers.get("content-type") || "";
   const files: File[] = [];
@@ -36,6 +44,19 @@ export async function POST(req: Request) {
 
   if (!files.length) {
     return NextResponse.json({ error: "Attach at least one file - image, PDF, Word, Excel, CSV, or text." }, { status: 400 });
+  }
+
+  if (files.length > MAX_FILES) {
+    return NextResponse.json({ error: `Too many files (${files.length}) - attach at most ${MAX_FILES} per read.` }, { status: 413 });
+  }
+  const oversized = files.filter((f) => f.size > MAX_FILE_BYTES);
+  if (oversized.length) {
+    return NextResponse.json(
+      {
+        error: `${oversized.map((f) => f.name).join(", ")} exceeded the ${MAX_FILE_BYTES / 1024 / 1024} MB inline limit. Use the AI Agent workspace upload for files up to 2 GB.`,
+      },
+      { status: 413 },
+    );
   }
 
   try {

@@ -122,7 +122,8 @@ async function duckduckgo(query: string, max: number): Promise<AgentSearchHit[]>
       headers: { "User-Agent": "ONE-HEALTH-GHANA/1.0 (public-health research)" },
     });
     if (!res.ok) return [];
-    const html = await res.text();
+    // Capped read: a hostile or broken upstream must not buffer unbounded HTML.
+    const html = await readCapped(res, 1_000_000);
     const hits: AgentSearchHit[] = [];
     const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/gi;
     let m: RegExpExecArray | null;
@@ -138,6 +139,52 @@ async function duckduckgo(query: string, max: number): Promise<AgentSearchHit[]>
   } catch {
     return [];
   }
+}
+
+/**
+ * Read a response body up to a byte cap. The agent's web_fetch hands the model
+ * arbitrary URLs, and `res.text()` would buffer a whole ISO/tarball/CSV in RAM
+ * before we slice it to a few thousand characters - a 512 MB instance would
+ * die long before the cap mattered. Cap the read instead.
+ */
+export async function readCapped(res: Response, capBytes: number): Promise<string> {
+  if (!res.body) return (await res.text().catch(() => "")).slice(0, capBytes);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let out = "";
+  let received = 0;
+  const chunkBuf: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      received += value.length;
+      chunkBuf.push(value);
+      if (received >= capBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* connection already closing */
+        }
+        break;
+      }
+    }
+  }
+  out = decoder.decode(concatChunks(chunkBuf, capBytes), { stream: false });
+  return out;
+}
+
+function concatChunks(chunks: Uint8Array[], capBytes: number): Uint8Array {
+  const total = Math.min(chunks.reduce((n, c) => n + c.length, 0), capBytes);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    if (offset >= total) break;
+    const take = Math.min(c.length, total - offset);
+    out.set(c.subarray(0, take), offset);
+    offset += take;
+  }
+  return out;
 }
 
 /** Server-side page reader: HTML → readable text, hard capped for prompt safety. */
@@ -157,7 +204,9 @@ export async function fetchPageText(url: string, maxChars = 6000): Promise<{ tit
       signal: ctrl.signal,
     });
     const ctype = res.headers.get("content-type") || "";
-    const raw = await res.text();
+    // ~2 MB of source is far more than any readable page needs; the text is
+    // sliced down to maxChars anyway, and the cap keeps memory flat.
+    const raw = await readCapped(res, 2_000_000);
     if (!res.ok) return { title: "", text: `HTTP ${res.status} fetching ${parsed}`, url: parsed };
     if (ctype.includes("json")) {
       return { title: parsed, text: raw.slice(0, maxChars), url: parsed };

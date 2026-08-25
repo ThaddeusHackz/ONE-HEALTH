@@ -12,6 +12,7 @@ import {
   whisperKey,
 } from "@/lib/env";
 import { GEMINI_IMAGE_MODEL_CHAIN, listGeminiModels } from "@/lib/agent/media";
+import { geminiPing } from "@/lib/agent/gemini";
 import { geminiKey } from "@/lib/env";
 import { lastOpenRouterError, MAX_MODELS_PER_REQUEST } from "@/lib/openrouter";
 
@@ -159,6 +160,31 @@ export async function GET() {
         ok: res.ok && Boolean(json.total),
         status: res.status,
         detail: res.ok ? `${json.total || 0} photos match "ghana health"` : (json.errors?.[0] || res.statusText),
+        masked: maskKey(key),
+      };
+    }),
+  );
+
+  checks.push(
+    await probe("gemini", maskKey(geminiKey()), async () => {
+      const key = geminiKey();
+      if (!key) {
+        return {
+          id: "gemini",
+          ok: false,
+          status: 0,
+          detail: "missing GEMINI_API_KEY - vision, deep research and image generation all need it",
+          masked: "not set",
+        };
+      }
+      // One real generateContent call: proves the key is valid AND that a
+      // thinking model actually returns text with our generation config.
+      const ping = await geminiPing();
+      return {
+        id: "gemini",
+        ok: ping.ok,
+        status: ping.ok ? 200 : 0,
+        detail: ping.detail,
         masked: maskKey(key),
       };
     }),

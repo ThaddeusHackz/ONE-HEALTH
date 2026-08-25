@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { openRouterConfigured } from "@/lib/openrouter";
 import { runAgent, type AgentTurn } from "@/lib/agent/run";
 import { TOOLS } from "@/lib/agent/tools";
+import { isValidModelSlug } from "@/lib/agent/models";
 import type { AgentAttachment, AgentMode } from "@/lib/agent/types";
 import type { ChatMessage } from "@/lib/openrouter";
 
@@ -37,10 +38,11 @@ export function GET() {
 
 /**
  * Render free instances have 512 MB of RAM. Attachments arrive as base64 inside
- * JSON, so a naive 8 x 9 MB upload becomes ~96 MB of parsed object on a box that
- * is already running Next. Reject early with a readable message instead.
+ * JSON, so the body cap keeps the parsed object comfortably inside that. Files
+ * larger than this belong in the workspace through the chunked 2 GB upload
+ * endpoint (/api/agent/upload), not inline in a turn.
  */
-const MAX_BODY_BYTES = 28_000_000;
+const MAX_BODY_BYTES = 40_000_000;
 
 export async function POST(req: Request) {
   const declared = Number(req.headers.get("content-length") || 0);
@@ -71,15 +73,113 @@ export async function POST(req: Request) {
   }
   const mode: AgentMode = VALID_MODES.includes(body.mode as AgentMode) ? (body.mode as AgentMode) : "chat";
 
+  /**
+   * Attachments arrive BOTH places: on turns (older clients) and as a
+   * top-level array (what useAgent actually sends). They are validated and
+   * merged onto the LAST user turn, because that is where runAgent's tool
+   * context looks for them. Without this merge the vision_read tool receives
+   * an empty context and can never see a file - the attachment reaches the
+   * model as a name in the prompt but the file itself never arrives.
+   */
+  const validAttachment = (a: unknown): AgentAttachment | null => {
+    if (!a || typeof a !== "object") return null;
+    const att = a as Partial<AgentAttachment>;
+    const name = typeof att.name === "string" ? att.name.slice(0, 200) : "attachment";
+    const mime = typeof att.mime === "string" ? att.mime.slice(0, 120) : "application/octet-stream";
+    const dataUrl = typeof att.dataUrl === "string" ? att.dataUrl : "";
+    if (!dataUrl.startsWith("data:")) return null;
+    if (dataUrl.length > 11_000_000) return null; // ≈8 MB binary before base64
+    const kind =
+      att.kind === "image" || att.kind === "pdf" || att.kind === "doc" || att.kind === "text" ? att.kind : "text";
+    return {
+      name,
+      mime,
+      dataUrl,
+      kind,
+      text: typeof att.text === "string" ? att.text.slice(0, 60_000) : undefined,
+      bytes: Number(att.bytes) || Math.floor((dataUrl.length * 3) / 4),
+    };
+  };
+
+  const MAX_ATTACHMENTS = 8;
+  const topAttachments = (Array.isArray(body.attachments) ? body.attachments : [])
+    .map(validAttachment)
+    .filter((a): a is AgentAttachment => Boolean(a))
+    .slice(0, MAX_ATTACHMENTS);
+
   const turns: AgentTurn[] = Array.isArray(body.turns)
     ? body.turns
         .filter((t) => t && (t.role === "user" || t.role === "assistant"))
         .slice(-24)
-        .map((t) => ({ role: t.role, content: String(t.content || "").slice(0, 24000), attachments: t.attachments }))
+        .map((t) => ({
+          role: t.role,
+          content: String(t.content || "").slice(0, 24000),
+          attachments: (Array.isArray(t.attachments) ? t.attachments : [])
+            .map(validAttachment)
+            .filter((a): a is AgentAttachment => Boolean(a))
+            .slice(0, MAX_ATTACHMENTS),
+        }))
     : [];
+
+  if (topAttachments.length) {
+    // Merge onto the last user turn - the turn vision_read reads.
+    let merged = false;
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      if (turns[i].role === "user") {
+        const existing = turns[i].attachments || [];
+        const seen = new Set(existing.map((a) => `${a.name}:${a.bytes}`));
+        turns[i].attachments = [
+          ...existing,
+          ...topAttachments.filter((a) => !seen.has(`${a.name}:${a.bytes}`)),
+        ].slice(0, MAX_ATTACHMENTS);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged && !turns.some((t) => t.role === "user" && (t.attachments || []).length)) {
+      turns.push({ role: "user", content: "(attachment)", attachments: topAttachments });
+    }
+  }
 
   const requested = Array.isArray(body.tools) && body.tools.length ? body.tools : TOOLS.map((t) => t.name);
   const allowedTools = TOOLS.map((t) => t.name).filter((n) => requested.includes(n));
+
+  /**
+   * The resume transcript travels to the browser and back. It is client-
+   * supplied, so each message is capped before it re-enters the model
+   * conversation - a tampered client must not be able to inject a 30 MB
+   * "tool result" (or an injected system turn) back into the prompt.
+   */
+  const resume = body.resume
+    ? {
+        callId: String(body.resume.callId || "").slice(0, 120),
+        output: String(body.resume.output || "").slice(0, 12_000),
+        priorText: typeof body.resume.priorText === "string" ? body.resume.priorText.slice(0, 60_000) : undefined,
+        messages: (Array.isArray(body.resume.messages) ? body.resume.messages : [])
+          .slice(-40)
+          .map((m) => ({
+            role:
+              m?.role === "assistant" || m?.role === "user" || m?.role === "system" || m?.role === "tool"
+                ? m.role
+                : "user",
+            content:
+              typeof m?.content === "string"
+                ? m.content.slice(0, 24_000)
+                : Array.isArray(m?.content)
+                  ? m.content.slice(0, 8)
+                  : "",
+            ...(Array.isArray(m?.tool_calls) ? { tool_calls: m.tool_calls.slice(0, 8) } : {}),
+            ...(typeof m?.tool_call_id === "string" ? { tool_call_id: m.tool_call_id.slice(0, 120) } : {}),
+            ...(typeof m?.name === "string" ? { name: m.name.slice(0, 80) } : {}),
+          })),
+      }
+    : undefined;
+  if (body.resume && !resume?.messages.length) {
+    return NextResponse.json({ error: "Resume payload missing messages." }, { status: 400 });
+  }
+
+  /** A pinned model must be a real slug; anything odd is treated as Auto. */
+  const model = typeof body.model === "string" && isValidModelSlug(body.model.trim()) ? body.model.trim() : undefined;
 
   if (!turns.length && !body.resume) {
     return NextResponse.json({ error: "No conversation turns supplied." }, { status: 400 });
@@ -101,11 +201,11 @@ export async function POST(req: Request) {
           turns,
           mode,
           allowedTools,
-          model: body.model || undefined,
+          model,
           temperature: typeof body.temperature === "number" ? Math.min(Math.max(body.temperature, 0), 1.5) : undefined,
           reasoning: Boolean(body.reasoning),
           conversationId: body.conversationId || undefined,
-          resume: body.resume,
+          resume,
           emit: (event) => send(event.type, event),
         });
         send("result", {

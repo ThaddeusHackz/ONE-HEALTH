@@ -121,6 +121,8 @@ export default function IntelligencePage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = () => URL.revokeObjectURL(url);
       void audio.play();
       return;
     }

@@ -81,8 +81,10 @@ export function whisperKey(): string {
 }
 
 /**
- * Gemini API key - used for image generation only.
- * Reasoning, vision and search stay on OpenRouter/Tavily; do not route them here.
+ * Gemini API key - the platform's primary engine for VISION (reading photos,
+ * PDFs, documents in the agent, Vision Lab and One Health ingest), DEEP
+ * RESEARCH synthesis and IMAGE GENERATION. OpenRouter stays the reasoning
+ * brain for chat; whenever a file or image must be SEEN, it goes through here.
  */
 export function geminiKey(): string {
   const direct = first(

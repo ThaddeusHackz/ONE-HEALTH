@@ -103,6 +103,13 @@ export function useAgent() {
   const pendingCallRef = useRef<PendingClientCall | null>(null);
   /** Assistant text streamed so far this turn, so a sandbox resume can carry it. */
   const priorTextRef = useRef<string>("");
+  /**
+   * The current turn's attachments. They must ride along on EVERY request of
+   * the turn - the initial send AND the sandbox_exec / ask_user resume - or a
+   * Builder run that pauses for the sandbox loses its files and vision_read
+   * comes back empty.
+   */
+  const turnAttachmentsRef = useRef<AgentAttachment[]>([]);
   const settingsRef = useRef<AgentSettings>({ mode: "chat", tools: [], model: "", temperature: 0.4, reasoning: false });
   const conversationRef = useRef<string | null>(null);
   const messagesRef = useRef<UiMessage[]>([]);
@@ -173,7 +180,6 @@ export function useAgent() {
   const openStream = useCallback(
     async (payload: Record<string, unknown>, controller: AbortController): Promise<Response> => {
       const body = JSON.stringify(payload);
-      let lastError = "";
       for (let attempt = 0; ; attempt += 1) {
         const res = await fetch("/api/agent", {
           method: "POST",
@@ -187,7 +193,6 @@ export function useAgent() {
           return res;
         }
         const text = await res.text().catch(() => "");
-        lastError = text;
         const coldStart =
           res.ok && (!ctype || /text\/html/i.test(ctype) || /Render|Application loading|spinning up/i.test(text));
         if (!coldStart || attempt >= COLD_START_WAITS.length) {
@@ -290,10 +295,10 @@ export function useAgent() {
             break;
           case "file":
             patch((m) => ({ ...m, events: [...m.events, evt] }));
-            setFiles((prev) => {
+            if (parsed.file && typeof (parsed.file as WorkspaceFile).name === "string") {
               const incoming = parsed.file as WorkspaceFile;
-              return [incoming, ...prev.filter((f) => f.name !== incoming?.name)].slice(0, 60);
-            });
+              setFiles((prev) => [incoming, ...prev.filter((f) => f.name !== incoming.name)].slice(0, 60));
+            }
             break;
           case "sandbox_result":
             patch((m) => ({ ...m, events: [...m.events, evt] }));
@@ -411,6 +416,8 @@ export function useAgent() {
           temperature: settings.temperature,
           reasoning: settings.reasoning,
           conversationId: conversationRef.current || undefined,
+          // The turn's attachments survive the sandbox round trip.
+          attachments: turnAttachmentsRef.current,
           resume: {
             messages: pending.messages,
             callId: pending.callId,
@@ -444,6 +451,7 @@ export function useAgent() {
       setStreaming({ text: "", reasoning: "" });
 
       priorTextRef.current = "";
+      turnAttachmentsRef.current = input.attachments || [];
       const assistantId = uid("a");
       const turns = [
         ...messagesRef.current.filter((m) => m.content.trim()).map((m) => ({ role: m.role, content: m.content })),
@@ -523,6 +531,7 @@ export function useAgent() {
             mode: settings.mode,
             tools: settings.tools.length ? settings.tools : undefined,
             conversationId: conversationRef.current || undefined,
+            attachments: turnAttachmentsRef.current,
             resume: { messages: pending.messages, callId: pending.callId, output: answer },
           },
           assistantId,
@@ -547,6 +556,7 @@ export function useAgent() {
     setStreaming(null);
     setError("");
     setPendingAsk(null);
+    turnAttachmentsRef.current = [];
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {

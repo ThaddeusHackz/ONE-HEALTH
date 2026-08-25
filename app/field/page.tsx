@@ -31,6 +31,8 @@ export default function FieldPage() {
       setModel(json.model || "");
       const c = json.nowcast?.current;
       setNow(c ? `Observed ${c.observed} · nowcast ${c.nowcast} (${c.low}-${c.high}) · reporting ${Math.round(c.completeness * 100)}%` : "");
+    } catch (e) {
+      setText(`Field brief failed: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -38,20 +40,30 @@ export default function FieldPage() {
 
   async function speak() {
     if (!speakable) return;
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: speakable }),
-    });
-    const type = res.headers.get("content-type") || "";
-    if (type.includes("audio")) {
-      const url = URL.createObjectURL(await res.blob());
-      void new Audio(url).play();
-      return;
-    }
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(speakable));
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: speakable }),
+      });
+      const type = res.headers.get("content-type") || "";
+      if (type.includes("audio")) {
+        const url = URL.createObjectURL(await res.blob());
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.onerror = () => URL.revokeObjectURL(url);
+        void audio.play();
+        return;
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(speakable));
+      }
+    } catch {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(speakable));
+      }
     }
   }
 

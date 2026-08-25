@@ -197,10 +197,17 @@ export function SpeakButton({ text, label = "Speak" }: { text: string; label?: s
   const [playing, setPlaying] = useState(false);
   const [engine, setEngine] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
 
   const stop = () => {
     audioRef.current?.pause();
     audioRef.current = null;
+    // Release the blob URL - it was created for every playback and never
+    // revoked, so long sessions slowly leaked media memory.
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     setPlaying(false);
   };
@@ -231,10 +238,15 @@ export function SpeakButton({ text, label = "Speak" }: { text: string; label?: s
       if (res.ok && ctype.includes("audio")) {
         const blob = await res.blob();
         setEngine(res.headers.get("x-tts-engine") || "server");
-        const audio = new Audio(URL.createObjectURL(blob));
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        const audio = new Audio(url);
         audioRef.current = audio;
-        audio.onended = () => setPlaying(false);
-        audio.onerror = () => browserSpeak(clean);
+        audio.onended = () => stop();
+        audio.onerror = () => {
+          stop();
+          browserSpeak(clean);
+        };
         await audio.play();
         return;
       }

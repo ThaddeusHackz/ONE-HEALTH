@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GEMINI_IMAGE_MODEL_CHAIN, generateImage, unsplashSearch } from "@/lib/agent/media";
 import { geminiKey } from "@/lib/env";
 import { recordAudit } from "@/lib/store";
+import { readJsonBody } from "@/lib/body";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -15,7 +16,9 @@ export function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 12_000_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     prompt?: string;
     model?: string;
     aspectRatio?: string;

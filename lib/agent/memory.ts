@@ -49,14 +49,18 @@ export interface AgentFile {
 
 /**
  * Everything here is serialised into one Postgres jsonb row on a 1 GB free
- * database, so the caps are about snapshot size, not just tidiness.
+ * database, so the caps are about snapshot size, not just tidiness. File
+ * bodies get a generous cap (a Builder artefact such as a full single-file
+ * dashboard must never be silently truncated after the agent verified the
+ * complete code in the sandbox) - the snapshot layer trims bodies only when
+ * the whole row actually exceeds its budget.
  */
 const MAX_FACTS = 400;
 const MAX_CONVERSATIONS = 60;
 const MAX_MESSAGES_PER_CONVERSATION = 160;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_FILES = 60;
-const MAX_FILE_BYTES = 120_000;
+const MAX_FILE_BYTES = 800_000;
 
 /* ------------------------------- facts ------------------------------- */
 

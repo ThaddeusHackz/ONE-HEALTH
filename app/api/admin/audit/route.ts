@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/body";
 import { requireAdmin } from "@/lib/auth";
 import { getDB } from "@/lib/store";
 import { signPayload, verifyPayload } from "@/lib/sign";
@@ -35,6 +36,8 @@ export function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (!requireAdmin(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const pack = (await req.json().catch(() => ({}))) as { signature?: string; body?: unknown };
+  const readPack = await readJsonBody(req, 2_000_000);
+  if (!readPack.ok) return NextResponse.json({ error: readPack.error }, { status: readPack.status });
+  const pack = readPack.data as { signature?: string; body?: unknown };
   return NextResponse.json(verifyPayload(pack));
 }

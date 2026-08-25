@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { Disclaimer } from "@/components/Disclaimer";
 import { KeyStatus } from "@/components/KeyStatus";
 
 const ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.tsv,.json,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.bmp,.xml,.html,image/*,application/pdf";
+/** Inline vision limit per file - larger files belong in the 2 GB workspace upload. */
+const MAX_FILE_MB = 8;
 
 export default function VisionPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const previewsRef = useRef<string[]>([]);
+  previewsRef.current = previews;
   const [kind, setKind] = useState("document");
   const [prompt, setPrompt] = useState("Extract any Ghana region, disease, dates and counts. Redact identifiers.");
   const [out, setOut] = useState("");
@@ -18,11 +22,31 @@ export default function VisionPage() {
   const [redactions, setRedactions] = useState(0);
   const [busy, setBusy] = useState(false);
 
+  // Release preview blob URLs when the page unmounts.
+  useEffect(
+    () => () => {
+      for (const url of previewsRef.current) URL.revokeObjectURL(url);
+    },
+    [],
+  );
+  const [fileError, setFileError] = useState("");
+
   function onFiles(list: FileList | null) {
     if (!list) return;
-    const next = Array.from(list).slice(0, 8);
+    const incoming = Array.from(list).slice(0, 8);
+    const tooBig = incoming.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
+    const next = incoming.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024);
+    setFileError(
+      tooBig.length
+        ? `${tooBig.map((f) => f.name).join(", ")} exceeded ${MAX_FILE_MB} MB and were skipped. Larger files (up to 2 GB) can be stored from the AI Agent's sandbox → Files → Upload.`
+        : "",
+    );
     setFiles(next);
-    setPreviews(next.filter((f) => f.type.startsWith("image/")).map((f) => URL.createObjectURL(f)));
+    // Release the previous preview URLs so repeated picks do not leak blobs.
+    setPreviews((prev) => {
+      for (const url of prev) URL.revokeObjectURL(url);
+      return next.filter((f) => f.type.startsWith("image/")).map((f) => URL.createObjectURL(f));
+    });
   }
 
   async function run() {
@@ -64,6 +88,7 @@ export default function VisionPage() {
         <div className="rounded-[28px] border border-line bg-white p-6 shadow-card">
           <h2 className="font-display text-2xl">Drop files</h2>
           <input className="mt-4 block w-full text-sm" type="file" accept={ACCEPT} multiple onChange={(e) => onFiles(e.target.files)} />
+          {fileError && <p className="mt-2 text-[12px] text-ghana-red">{fileError}</p>}
           <ul className="mt-3 space-y-1 text-xs text-muted">
             {files.map((f) => (
               <li key={f.name}>{f.name} · {Math.round(f.size / 1024)} KB · {f.type || "unknown"}</li>
