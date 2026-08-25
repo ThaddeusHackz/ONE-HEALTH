@@ -6,4 +6,14 @@ const compat = new FlatCompat({
   baseDirectory: dirname(fileURLToPath(import.meta.url)),
 });
 
-export default [...compat.extends("next/core-web-vitals", "next/typescript")];
+const ignores = [
+  // Build output (including the agent self-test's compiled tree) and
+  // tool-generated files are not source - linting them only produces
+  // noise like "no-require-imports" in perfectly valid CommonJS scripts.
+  ".next/**",
+  "node_modules/**",
+  "scripts/*.cjs",
+  "next-env.d.ts",
+];
+
+export default [{ ignores }, ...compat.extends("next/core-web-vitals", "next/typescript")];

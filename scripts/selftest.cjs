@@ -181,12 +181,46 @@ async function json(path, opts) {
   });
 
   await check("agent rejects an oversized body (512MB Render instance)", async () => {
+    // The cap is 40 MB (5 attachments × 6 MB base64); anything larger belongs
+    // in the workspace through the chunked 2 GB upload endpoint.
     const res = await fetch(base + "/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turns: [{ role: "user", content: "x".repeat(30_000_000) }] }),
+      body: JSON.stringify({ turns: [{ role: "user", content: "x".repeat(42_000_000) }] }),
     });
     if (res.status !== 413) throw new Error("expected 413, got " + res.status);
+  });
+
+  await check("agent accepts top-level attachments (the vision pipeline)", async () => {
+    // useAgent sends attachments as a top-level array; the route must merge
+    // them onto the last user turn or vision_read runs blind.
+    const res = await fetch(base + "/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        turns: [{ role: "user", content: "what is in my photo?" }],
+        mode: "vision",
+        attachments: [
+          { name: "photo.png", mime: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=", kind: "image", bytes: 5 },
+          { junk: true },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error("status " + res.status);
+    const text = await res.text();
+    if (!/event: result/.test(text)) throw new Error("no result frame: " + text.slice(0, 120));
+  });
+
+  await check("vision and ingest endpoints refuse oversized files", async () => {
+    const big = new File([Buffer.alloc(9 * 1024 * 1024, 1)], "huge.png", { type: "image/png" });
+    const fd = new FormData();
+    fd.append("files", big);
+    const v = await fetch(base + "/api/vision", { method: "POST", body: fd });
+    if (v.status !== 413) throw new Error("vision expected 413, got " + v.status);
+    const fd2 = new FormData();
+    fd2.append("files", big);
+    const i = await fetch(base + "/api/ingest", { method: "POST", body: fd2 });
+    if (i.status !== 413) throw new Error("ingest expected 413, got " + i.status);
   });
 
   await check("agent rejects malformed JSON", async () => {

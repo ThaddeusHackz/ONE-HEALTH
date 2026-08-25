@@ -265,14 +265,28 @@ async function tryChain(models: string[], base: Record<string, unknown>): Promis
   throw new RouterError(lastError || "All OpenRouter models failed");
 }
 
+/**
+ * A transient failure worth one same-model retry: gateway 5xx, timeouts and
+ * rate limits say "try again", not "this model cannot serve you".
+ */
+function isTransient(status: number, message: string) {
+  return (
+    status === 408 ||
+    status === 429 ||
+    status >= 500 ||
+    /timed out|timeout|temporarily|overloaded|rate.?limit|try again/i.test(message)
+  );
+}
+
 export async function complete(opts: {
   messages: ChatMessage[];
   models?: string[];
   temperature?: number;
   maxTokens?: number;
   json?: boolean;
+  /** models[0] is used ALONE - no chain, no substitution. */
+  pinned?: boolean;
 }): Promise<ORResult> {
-  const models = modelChain(opts.models);
   const body: Record<string, unknown> = {
     temperature: opts.temperature ?? 0.35,
     max_tokens: opts.maxTokens ?? 2200,
@@ -280,6 +294,37 @@ export async function complete(opts: {
     ...(opts.json ? { response_format: { type: "json_object" } } : {}),
   };
   lastError = "";
+
+  /* ------------------------- PINNED: one model only ------------------------- */
+  if (opts.pinned && opts.models?.length) {
+    const slug = opts.models[0];
+    const tried: string[] = [];
+    const errors: string[] = [];
+    let lastStatus = 0;
+    // Same slug twice: once immediately, once after a transient blip.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      tried.push(slug);
+      try {
+        const r = await postChat({
+          ...body,
+          model: slug,
+          provider: { allow_fallbacks: true, sort: "throughput" },
+        });
+        r.tried = tried;
+        return r;
+      } catch (err) {
+        const e = err as RouterError;
+        errors.push(`${slug}: ${e.message}`);
+        lastStatus = e.status || lastStatus;
+        if (isFatalAuth(e.status, e.message) || isCreditError(e.status, e.message)) break;
+        if (!isTransient(e.status, e.message)) break;
+      }
+    }
+    lastError = errors.join(" | ");
+    throw new RouterError(`${slug} could not complete the request. ${lastError.slice(0, 260)}`, lastStatus);
+  }
+
+  const models = modelChain(opts.models);
   try {
     return await tryChain(models, body);
   } catch (err) {
@@ -442,6 +487,12 @@ async function postStream(
  * Streaming completion with optional tool calling. Falls back down the same
  * 3-slug-at-a-time model chain as `complete`, and drops `tools` for providers
  * that reject them so a tool-capable request can never hard-fail.
+ *
+ * With `pinned: true` and exactly one model, that model is used ALONE:
+ * the request carries a single `model` string (no `models` fallback array),
+ * and the only retries are the same slug - first as sent, then without tools
+ * (some models reject function calling), then once more after a transient
+ * blip. It never silently answers from a different model.
  */
 export async function completeStream(opts: {
   messages: ChatMessage[];
@@ -450,6 +501,8 @@ export async function completeStream(opts: {
   maxTokens?: number;
   tools?: ToolCallSpec[];
   reasoning?: boolean;
+  /** models[0] is used ALONE - no chain, no substitution. */
+  pinned?: boolean;
   onDelta: (text: string, reasoning: string) => void;
 }): Promise<ORStreamResult> {
   const models = modelChain(opts.models);
@@ -462,11 +515,69 @@ export async function completeStream(opts: {
     ...(opts.reasoning ? { reasoning: { effort: "medium" } } : {}),
   };
 
+  lastError = "";
+
+  /* ------------------------- PINNED: one model only ------------------------- */
+  if (opts.pinned && opts.models?.length === 1) {
+    const slug = opts.models[0];
+    const attempts: Record<string, unknown>[] = [];
+    if (withTools) {
+      attempts.push(base);
+      // Same model, tools dropped - several strong models (DeepSeek R1, some
+      // Llama providers) reject function calling but answer perfectly without.
+      attempts.push({ ...base, tools: undefined, tool_choice: undefined });
+    } else {
+      attempts.push(base);
+    }
+
+    const errors: string[] = [];
+    for (const attempt of attempts) {
+      try {
+        const result = await postStream(
+          { ...attempt, model: slug, provider: { allow_fallbacks: true, sort: "throughput" } },
+          opts.onDelta,
+        );
+        return result;
+      } catch (err) {
+        const e = err as RouterError;
+        errors.push(`${slug}: ${e.message}`);
+        if (isFatalAuth(e.status, e.message) || isCreditError(e.status, e.message)) {
+          lastError = errors.join(" | ");
+          throw new RouterError(
+            `OpenRouter rejected ${slug} (${e.message}). Check the key/credits on Render.`,
+            e.status,
+          );
+        }
+        if (isTransient(e.status, e.message)) {
+          // One immediate same-config retry for a gateway blip.
+          try {
+            const result = await postStream(
+              { ...attempt, model: slug, provider: { allow_fallbacks: true, sort: "throughput" } },
+              opts.onDelta,
+            );
+            return result;
+          } catch (err2) {
+            const e2 = err2 as RouterError;
+            errors.push(`${slug} (retry): ${e2.message}`);
+            if (isFatalAuth(e2.status, e2.message) || isCreditError(e2.status, e2.message)) {
+              lastError = errors.join(" | ");
+              throw new RouterError(
+                `OpenRouter rejected ${slug} (${e2.message}). Check the key/credits on Render.`,
+                e2.status,
+              );
+            }
+          }
+        }
+      }
+    }
+    lastError = errors.join(" | ");
+    throw new RouterError(`${slug} could not complete the request. ${lastError.slice(0, 260)}`, 0);
+  }
+
   const attempts: Record<string, unknown>[] = [base];
   if (withTools) attempts.push({ ...base, tools: undefined, tool_choice: undefined });
   attempts.push({ ...base, tools: undefined, tool_choice: undefined, models: [...FREE_MODELS, "openrouter/auto"] });
 
-  lastError = "";
   const errors: string[] = [];
 
   for (const attempt of attempts) {

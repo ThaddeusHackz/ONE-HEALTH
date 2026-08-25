@@ -16,24 +16,59 @@ const MODES: { id: AgentMode; label: string; hint: string }[] = [
 
 /**
  * Attachments travel as base64 inside a JSON body to a 512 MB Render instance,
- * so the caps are deliberately below what a desktop app would allow.
+ * so the caps are deliberately below what a desktop app would allow. Images are
+ * downscaled first (Gemini reads 1568px perfectly), and anything larger belongs
+ * in the workspace through the chunked 2 GB upload (Files tab → Upload).
  */
-const MAX_FILE_MB = 4;
+const MAX_FILE_MB = 6;
 const MAX_FILES = 5;
+const MAX_TOTAL_MB = 26;
+const IMAGE_MAX_EDGE = 1568;
 
-async function toAttachment(file: File): Promise<AgentAttachment | null> {
-  if (file.size > MAX_FILE_MB * 1024 * 1024) return null;
-  const mime = file.type || "application/octet-stream";
-  const dataUrl: string = await new Promise((resolve, reject) => {
+/** Downscale a big image so the Gemini vision payload stays lean. */
+async function shrinkImage(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(new Error("read failed"));
     reader.readAsDataURL(file);
   });
+  if (file.size <= 1.5 * 1024 * 1024) return dataUrl;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("decode failed"));
+      image.src = dataUrl;
+    });
+    const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const out = canvas.toDataURL("image/jpeg", 0.88);
+    return out.length < dataUrl.length ? out : dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
+async function toAttachment(file: File): Promise<AgentAttachment | null> {
+  if (file.size > MAX_FILE_MB * 1024 * 1024) return null;
+  const mime = file.type || "application/octet-stream";
   const isImage = mime.startsWith("image/");
   const isPdf = mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   const isText =
     mime.startsWith("text/") || /\.(txt|md|csv|json|tsv|log|ya?ml|xml|js|ts|py|html|css)$/i.test(file.name);
+
+  const dataUrl = isImage ? await shrinkImage(file) : await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
 
   let text = "";
   if (isText) {
@@ -98,10 +133,21 @@ export function AgentComposer({
     const incoming = Array.from(list).slice(0, MAX_FILES);
     const parsed = await Promise.all(incoming.map(toAttachment));
     const rejected = parsed.filter((p) => !p).length;
-    if (rejected) setError(`${rejected} file(s) skipped - each file must be under ${MAX_FILE_MB} MB.`);
+    if (rejected)
+      setError(
+        `${rejected} file(s) skipped - each attachment must be under ${MAX_FILE_MB} MB. For anything bigger (up to 2 GB), open the Sandbox → Files tab and use Upload.`,
+      );
     setAttachments((prev) => {
-      const next = [...prev, ...(parsed.filter(Boolean) as AgentAttachment[])];
+      const incoming = parsed.filter(Boolean) as AgentAttachment[];
+      const next = [...prev, ...incoming];
       if (next.length > MAX_FILES) setError(`Up to ${MAX_FILES} attachments per turn.`);
+      const totalMb = next.reduce((n, a) => n + a.dataUrl.length, 0) / 1024 / 1024;
+      if (totalMb > MAX_TOTAL_MB) {
+        setError(
+          `These attachments would total ${totalMb.toFixed(1)} MB - keep a turn under ${MAX_TOTAL_MB} MB, or upload big files (up to 2 GB) in the sandbox Files tab.`,
+        );
+        return prev; // reject the new batch, keep what was already attached
+      }
       return next.slice(0, MAX_FILES);
     });
   }

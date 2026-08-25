@@ -63,7 +63,7 @@ const MODE_HINT: Record<AgentMode, string> = {
     "5. Prefer one self-contained file (inline CSS and JS, no build step, no external assets) so the preview actually renders.\n" +
     "6. Finish with: what you built, how you verified it, and where the file is.",
   vision:
-    "Mode: Vision. The user attached files. Call vision_read first, then work from exactly what is in them. Never invent content that is not visible.",
+    "Mode: Vision. The user attached files. Call vision_read FIRST - it runs the attachments through the Gemini vision engine and returns exactly what is in them. Work only from what vision_read reports; never invent content that is not visible.",
   health:
     "Mode: One Health desk. Lead with ghana_forecast / ghana_national_table / weather_now, pair human, animal and environmental signals, and keep every number inside an interval.",
 };
@@ -73,6 +73,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const toolLog: { name: string; ok: boolean; summary: string }[] = [];
   const lastTurn = [...input.turns].reverse().find((t) => t.role === "user");
   const userText = lastTurn?.content || "";
+  const hasAttachments = input.turns.some((t) => (t.attachments || []).length > 0);
 
   if (!openRouterConfigured()) {
     const text = offlineNotice();
@@ -121,8 +122,18 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
         .join("\n")}`
     : "";
 
+  /**
+   * Attachments are NOT inlined into the conversation message. Base64 parts
+   * would (a) bloat every request, and (b) 400 on pinned models without a
+   * vision modality. Instead the model is told the files are attached and
+   * reads them through the vision_read tool, which runs on the GEMINI key -
+   * so vision works identically with every model in the dropdown, and Gemini
+   * is the engine that actually looks at the file in every mode.
+   */
   const attachmentBlock = attachments.length
-    ? `\n\nATTACHED THIS TURN: ${attachments.map((a) => `${a.name} (${a.mime}, ${a.bytes} bytes)`).join(", ")}.`
+    ? `\n\nATTACHED THIS TURN: ${attachments.map((a) => `${a.name} (${a.mime}, ${a.bytes} bytes)`).join(", ")}.` +
+      `\nThe attached file(s) are available to you through the vision_read tool (powered by the Gemini vision engine).` +
+      `\nCall vision_read BEFORE answering anything about their contents. Never describe an attachment you have not read.`
     : "";
 
   const system: ChatMessage = {
@@ -138,34 +149,50 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   }
 
   const redactedUser = redactText(userText).text;
-  const parts: ContentPart[] = [{ type: "text", text: redactedUser || "(see attachments)" }];
-  for (const att of attachments.slice(0, 6)) {
-    if (att.kind === "image") parts.push({ type: "image_url", image_url: { url: att.dataUrl } });
-    else if (att.kind === "pdf") parts.push({ type: "file", file: { filename: att.name, file_data: att.dataUrl } });
-    else if (att.text) parts.push({ type: "text", text: `--- ${att.name} ---\n${att.text.slice(0, 6000)}` });
-  }
+  /**
+   * Text-only user turn. Small text attachments (< ~24 KB) ride along inline
+   * because they cost nothing and help every model; images and PDFs go through
+   * vision_read/Gemini exclusively.
+   */
+  const inlineTextBlocks = attachments
+    .filter((a) => a.text && a.text.length <= 24_000)
+    .map((a) => `--- ${a.name} ---\n${a.text!.slice(0, 24_000)}`);
+  const userContent =
+    [redactedUser || "(see attachments)", ...inlineTextBlocks].join("\n\n") || "(see attachments)";
 
-  const messages: ChatMessage[] = [
-    system,
-    ...history,
-    { role: "user", content: parts.length > 1 ? parts : redactedUser },
-  ];
+  const messages: ChatMessage[] = [system, ...history, { role: "user", content: userContent }];
+
+  /** Vision must always be available whenever a file was attached. */
+  const allowedTools = hasAttachments
+    ? Array.from(new Set([...input.allowedTools, "vision_read"]))
+    : input.allowedTools;
 
   const ctx: ToolContext = contextFrom(input.turns, input.mode);
 
-  return loop({ messages, input, emit, toolLog, step: 0, maxSteps: agentMaxSteps(), ctx });
+  return loop({ messages, input: { ...input, allowedTools }, emit, toolLog, step: 0, maxSteps: agentMaxSteps(), ctx });
 }
 
 /**
  * Build the tool context from the turn list. Shared by the fresh turn and the
  * sandbox resume path so the two can never drift apart.
+ *
+ * Images and PDFs always go in; text/doc attachments ride along too when they
+ * were too large for the inline prompt block, so vision_read (Gemini) can read
+ * a 5 MB CSV just as well as a photo.
  */
 function contextFrom(turns: AgentTurn[], mode: AgentMode): ToolContext {
   const attachments = turns.flatMap((t) => t.attachments || []);
   return {
     images: attachments.filter((a) => a.kind === "image").map((a) => a.dataUrl),
     docs: attachments
-      .filter((a) => a.kind === "pdf")
+      .filter(
+        (a) =>
+          (a.kind === "pdf" || a.kind === "doc" || a.kind === "text") &&
+          a.dataUrl &&
+          // Small text was already inlined into the prompt - no need to send
+          // it to the vision engine as well.
+          (a.kind !== "text" || !a.text || a.text.length > 24_000),
+      )
       .map((a) => ({ filename: a.name, file_data: a.dataUrl })),
     attachmentNotes: attachments.map((a) => a.name),
     mode,
@@ -209,29 +236,33 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
     };
 
     /**
-     * A pinned model is used on its own - no chain, no substitution - until it
-     * runs out of credit or the key stops authorising it. Only then does the
-     * turn fall back to the Auto chain, and the browser is told to move the
-     * dropdown back to "Auto (fallback chain)" so the UI matches reality.
-     *
-     * The Auto chain itself is untouched: passing `models: undefined` is exactly
-     * what an unpinned turn has always done.
+     * A pinned model is used on its own - the request carries exactly that
+     * slug, no fallback array, no substitution. Only if it genuinely cannot
+     * serve the turn (out of credit, key stops authorising it, or the model is
+     * unreachable after retries) does the turn fall back to the Auto chain,
+     * and the browser is told to move the dropdown back to "Auto (fallback
+     * chain)" so the UI matches reality. The Auto chain itself is untouched.
      */
     let result;
     if (pinnedModel) {
+      emit({ type: "status", text: `Answering with ${pinnedModel} (pinned - no substitution).` });
       try {
-        result = await completeStream({ ...streamOpts, models: [pinnedModel] });
+        result = await completeStream({ ...streamOpts, models: [pinnedModel], pinned: true });
       } catch (err) {
         const e = err as { status?: number; message?: string };
         const status = e.status || 0;
         const message = e.message || String(err);
         const outOfCredit = isCreditError(status, message) || isFatalAuth(status, message) || isGeminiQuotaError(status, message);
-        if (!outOfCredit) throw err;
         const reason = isFatalAuth(status, message)
           ? "the key stopped authorising it"
-          : "its credits ran out";
-        emit({ type: "status", text: `${pinnedModel} ${reason} - switching to the Auto fallback chain.` });
-        emit({ type: "model_reset", from: pinnedModel, reason });
+          : outOfCredit
+            ? "its credits ran out"
+            : "could not be reached";
+        emit({
+          type: "status",
+          text: `${pinnedModel} ${reason} - switching to the Auto fallback chain. (${message.slice(0, 140)})`,
+        });
+        emit({ type: "model_reset", from: pinnedModel, reason: `${reason}: ${message.slice(0, 120)}` });
         pinnedModel = "";
         result = await completeStream({ ...streamOpts, models: undefined });
       }

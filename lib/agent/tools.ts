@@ -1,8 +1,8 @@
 import { GHANA_CONTEXT, DISEASES, REGIONS } from "@/lib/ghana";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { ghanaWeather } from "@/lib/weather";
-import { visionAnalyze, type ChatMessage, type ToolCallSpec } from "@/lib/openrouter";
-import { geminiComplete, geminiConfigured } from "./gemini";
+import { visionAnalyze, type ToolCallSpec } from "@/lib/openrouter";
+import { geminiConfigured, geminiVision } from "./gemini";
 import { redactText } from "@/lib/redact";
 import { recordAudit } from "@/lib/store";
 import { agentWebSearch, fetchPageText, formatAgentHits } from "./web";
@@ -19,6 +19,7 @@ import {
   saveFact,
   writeFile,
 } from "./memory";
+import { deleteUpload, listUploads, readUploadHead } from "./uploads";
 import type { AgentEvent, ChartSpec, DiagramSpec, TableSpec } from "./types";
 
 export interface ToolContext {
@@ -202,7 +203,41 @@ export const TOOLS: ToolDefinition[] = [
         "You are the vision tool of ONE HEALTH GHANA. Extract only what is visible. Flag possible identifiers without repeating them.";
 
       /**
-       * Vision runs on Gemini. OpenRouter is used only when no Google key is
+       * Gemini's inline-data ceiling is ~20 MB per request. When a user
+       * attaches more than that, the NEWEST files win (they are the ones being
+       * asked about) and the model is told which ones were skipped, so it can
+       * never claim it saw a file that was dropped.
+       */
+      const INLINE_BUDGET = 18_000_000;
+      const ordered = [
+        ...ctx.images.map((url) => ({ kind: "image" as const, url, name: "image" })),
+        ...ctx.docs.map((d) => ({ kind: "doc" as const, url: d.file_data, name: d.filename })),
+      ].reverse(); // newest attachment first
+      let budget = INLINE_BUDGET;
+      const images: string[] = [];
+      const docs: { filename: string; file_data: string }[] = [];
+      const skipped: string[] = [];
+      for (const item of ordered) {
+        if (item.url.length > budget) {
+          skipped.push(item.name);
+          continue;
+        }
+        budget -= item.url.length;
+        if (item.kind === "image") images.unshift(item.url);
+        else docs.unshift({ filename: item.name, file_data: item.url });
+      }
+      if (!images.length && !docs.length) {
+        return fail(
+          `The attachment(s) are larger than the vision engine's 20 MB inline limit (${ctx.attachmentNotes.join(", ")}). ` +
+            `Ask the user to attach smaller files, or upload the file to the workspace (up to 2 GB) and work from it there.`,
+        );
+      }
+      const skippedNote = skipped.length ? `\n\nNOTE: ${skipped.join(", ")} exceeded the inline size budget and were NOT read.` : "";
+
+      /**
+       * Vision runs on Gemini - it is the platform's primary vision engine, and
+       * it reads the file no matter which chat model is pinned in the dropdown.
+       * OpenRouter's vision chain is a pure fallback for when no Google key is
        * configured at all, and the answer says which provider produced it - a
        * reader must never have to guess what actually looked at the file.
        */
@@ -210,24 +245,40 @@ export const TOOLS: ToolDefinition[] = [
       let text: string;
       let model: string;
       if (geminiConfigured()) {
-        engine = "gemini";
-        const messages: ChatMessage[] = [
-          { role: "system", content: extraSystem },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              ...ctx.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
-              ...ctx.docs.map((f) => ({ type: "file" as const, file: f })),
-            ],
-          },
-        ];
-        const result = await geminiComplete({ messages, temperature: 0.2, maxTokens: 2048 });
-        text = result.text;
-        model = result.model;
+        try {
+          engine = "gemini";
+          const result = await geminiVision({
+            prompt,
+            images,
+            files: docs,
+            extraSystem,
+          });
+          text = result.text;
+          model = result.model;
+        } catch (geminiErr) {
+          const reason = (geminiErr as Error).message || "Gemini vision failed";
+          try {
+            engine = "openrouter-fallback";
+            const result = await visionAnalyze({ prompt, images, files: docs, extraSystem });
+            if (result.degraded) {
+              return fail(
+                `VISION FAILED - the attachment was NOT read.\nGemini: ${reason.slice(0, 180)}\nOpenRouter: ${result.degraded}\n` +
+                  `Tell the user the file could not be opened; do not describe its contents.`,
+              );
+            }
+            text = result.text;
+            model = result.model;
+          } catch (orErr) {
+            return fail(
+              `VISION FAILED - the attachment was NOT read.\nGemini: ${reason.slice(0, 180)}\nOpenRouter: ${(
+                (orErr as Error).message || ""
+              ).slice(0, 180)}\nTell the user the file could not be opened; do not describe its contents.`,
+            );
+          }
+        }
       } else {
         engine = "openrouter-fallback";
-        const result = await visionAnalyze({ prompt, images: ctx.images, files: ctx.docs, extraSystem });
+        const result = await visionAnalyze({ prompt, images, files: docs, extraSystem });
         if (result.degraded) {
           return fail(
             `VISION FAILED - the attachment was NOT read. ${result.degraded}\n` +
@@ -241,7 +292,7 @@ export const TOOLS: ToolDefinition[] = [
 
       recordAudit({ actor: "agent", action: "vision", model, redactions: 0, detail: String(args.question).slice(0, 80) });
       return ok(
-        `VISION (${engine === "gemini" ? "Gemini" : "OpenRouter fallback"} · ${model}):\n${text}`,
+        `VISION (${engine === "gemini" ? "Gemini" : "OpenRouter fallback"} · ${model}):${skippedNote}\n${text}`,
         [{ type: "status", text: `Vision read via ${model} (${engine})` }],
       );
     },
@@ -276,40 +327,58 @@ export const TOOLS: ToolDefinition[] = [
 
   {
     name: "list_files",
-    description: "List every file currently in the user's workspace.",
+    description: "List every file currently in the user's workspace (agent-created files and large user uploads up to 2 GB).",
     parameters: { type: "object", properties: {} },
     async run() {
       const files = listFiles();
-      if (!files.length) return ok("The workspace is empty.");
-      return ok(
-        files.map((f) => `- ${f.name} (${f.language}, ${f.bytes} bytes, updated ${f.updatedAt})`).join("\n"),
-      );
+      const uploads = await listUploads().catch(() => []);
+      if (!files.length && !uploads.length) return ok("The workspace is empty.");
+      const lines = [
+        ...files.map((f) => `- ${f.name} (${f.language}, ${f.bytes} bytes, updated ${f.updatedAt})`),
+        ...uploads.map(
+          (u) =>
+            `- ${u.name} (uploaded file, ${u.language}${u.textLike ? ", text-readable" : ", binary - download only"}, ${(u.bytes / 1024 / 1024).toFixed(1)} MB)`,
+        ),
+      ];
+      return ok(lines.join("\n"));
     },
   },
 
   {
     name: "read_file",
-    description: "Read the content of a workspace file.",
+    description:
+      "Read the content of a workspace file. For large uploads returns the first ~200 KB (enough to understand structure).",
     parameters: {
       type: "object",
       properties: { name: { type: "string" } },
       required: ["name"],
     },
     async run(args) {
-      const file = readFile(String(args.name || ""));
-      if (!file) return fail(`No workspace file named ${args.name}. Use list_files.`);
-      return ok(`--- ${file.name} (${file.language}) ---\n${file.content.slice(0, 20000)}`);
+      const name = String(args.name || "");
+      const file = readFile(name);
+      if (file) return ok(`--- ${file.name} (${file.language}) ---\n${file.content.slice(0, 20000)}`);
+      const head = await readUploadHead(name).catch(() => null);
+      if (head) {
+        return ok(
+          `--- ${head.name} (uploaded ${head.mime}, ${(head.bytes / 1024 / 1024).toFixed(1)} MB total${
+            head.truncated ? ", showing the first part only" : ""
+          }) ---\n${head.text}`,
+        );
+      }
+      return fail(`No workspace file named ${args.name}. Use list_files.`);
     },
   },
 
   {
     name: "delete_file",
-    description: "Delete a workspace file.",
+    description: "Delete a workspace file (agent-created or uploaded).",
     parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
     async run(args) {
       const name = String(args.name || "");
-      if (!readFile(name)) return fail(`No workspace file named ${name}.`);
-      deleteFile(name);
+      const hadSmall = Boolean(readFile(name));
+      const hadUpload = await deleteUpload(name).catch(() => false);
+      if (!hadSmall && !hadUpload) return fail(`No workspace file named ${name}.`);
+      if (hadSmall) deleteFile(name);
       return ok(`Deleted ${name}.`);
     },
   },

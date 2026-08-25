@@ -4,11 +4,12 @@ National **disease forecasting, document vision, and early-warning** desk for th
 
 This repository turns the Phase 2 modelling workbook into a working system:
 
-- **AI Agent** (`/agent`) - reasoning, live web research, vision, image generation, an in-browser code sandbox, charts, tables and long-term memory
+- **AI Agent** (`/agent`) - reasoning, live web research, Gemini vision, image generation, an in-browser code sandbox with a full self-scan, charts, tables, long-term memory and 2 GB workspace uploads
 - probabilistic 4-week forecasts (baselines → ridge → random forest → ensemble)
 - IDSR-style z-score watches
-- OpenRouter multi-model intelligence with automatic fallback
-- vision on photos, scans, and mixed files
+- OpenRouter multi-model intelligence: pin any model (used alone, never substituted) or run the Auto fallback chain
+- vision on photos, scans, and mixed files - powered by the Gemini API key in every mode
+- deep research synthesis on the Gemini API key
 - voice in/out
 - Ghana-weighted web search
 - a white 2026 interface in Ghana flag + clinical teal
@@ -26,18 +27,20 @@ npm run dev
 
 Open http://localhost:3000
 
-Without a key the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning, live research, vision, image generation and Whisper need OpenRouter.
+Without a key the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning needs OpenRouter; vision, deep research and image generation need GEMINI_API_KEY.
 
 ### Optional keys that light up more of the AI Agent
 
 | Variable | Unlocks |
 |---|---|
+| `GEMINI_API_KEY` | **vision on every surface** (agent, Vision Lab, ingest), **deep research synthesis**, **image generation** |
 | `TAVILY_API_KEY` | live web search, deep research (DuckDuckGo fallback otherwise) |
 | `UNSPLASH_ACCESS_KEY` | real stock photography (Tavily images otherwise) |
 | `OPENAI_API_KEY` | Whisper speech-to-text directly (OpenRouter route otherwise) |
 | `ELEVENLABS_API_KEY` | high-quality spoken answers (device voice otherwise) |
 | `OPENWEATHER_API_KEY` | live climate pillar |
-| `OPENROUTER_IMAGE_MODELS` | comma-separated image model slugs tried first |
+| `GEMINI_MODELS` | comma-separated Gemini text/vision models tried first |
+| `GEMINI_IMAGE_MODELS` | comma-separated Gemini image models tried first |
 | `AGENT_MAX_STEPS` | agentic tool steps per turn (default 8, max 24) |
 
 Agent docs: [`docs/AI_CAPABILITIES.md`](docs/AI_CAPABILITIES.md) · [`docs/AGENT_FORENSIC.md`](docs/AGENT_FORENSIC.md)
