@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/body";
 import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
 import { runForecast } from "@/lib/forecast";
 import { reportingNowcast } from "@/lib/nowcast";
@@ -18,7 +19,9 @@ const FALLBACK: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 32_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     diseaseId?: string;
     regionId?: string;
     districtId?: string;

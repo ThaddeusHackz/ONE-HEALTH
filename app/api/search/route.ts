@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { webSearch } from "@/lib/search";
 import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { readJsonBody } from "@/lib/body";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { query?: string; synthesize?: boolean };
+  const read = await readJsonBody(req, 32_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as { query?: string; synthesize?: boolean };
   const query = (body.query || "").trim();
   if (!query) return NextResponse.json({ error: "query required" }, { status: 400 });
   const hits = await webSearch(query, 6);

@@ -239,6 +239,36 @@ async function json(path, opts) {
     if (res.status !== 400) throw new Error("expected 400, got " + res.status);
   });
 
+  await check("every JSON route caps its request body", async () => {
+    const big = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(9_000_000) }] });
+    const chat = await fetch(base + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: big,
+    });
+    if (chat.status !== 413) throw new Error("chat expected 413, got " + chat.status);
+    const bigQuery = JSON.stringify({ query: "y".repeat(1_000_000) });
+    const search = await fetch(base + "/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: bigQuery,
+    });
+    if (search.status !== 413) throw new Error("search expected 413, got " + search.status);
+    const mem = await fetch(base + "/api/agent/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fact: "z".repeat(1_000_000) }),
+    });
+    if (mem.status !== 413) throw new Error("memory expected 413, got " + mem.status);
+    // A valid small body must still pass through the same reader.
+    const ok = await fetch(base + "/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "malaria" }),
+    });
+    if (!ok.ok) throw new Error("small body rejected: " + ok.status);
+  });
+
   await check("streaming responses are not compressed", async () => {
     const res = await fetch(base + "/api/agent", {
       method: "POST",

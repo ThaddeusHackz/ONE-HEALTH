@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/body";
 import { deleteFile, listFiles, readFile, writeFile } from "@/lib/agent/memory";
 import { deleteUpload, listUploads, readUploadHead } from "@/lib/agent/uploads";
 
@@ -35,7 +36,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 4_000_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     name?: string;
     content?: string;
     language?: string;

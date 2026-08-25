@@ -2,6 +2,52 @@
 
 This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a03499-one-health-ai`.
 
+## 2026-08-25 (pass 5) Forensic sweep - request-body caps everywhere, postMessage + CSS hardening
+
+### Every JSON route now caps its request body
+Next.js App Router route handlers have NO built-in body limit. Eleven routes
+parsed `req.json()` of arbitrary size straight into RAM: /api/chat, /api/search,
+/api/tts, /api/agent/images, /api/agent/memory, /api/agent/files, /api/series,
+/api/field-brief and the three admin routes. A single oversized POST could OOM
+the 512 MB Render instance before any application logic ran.
+- [x] new shared `lib/body.ts` `readJsonBody(req, cap)` - content-length AND
+  raw-text checked before JSON.parse, non-object bodies rejected
+- [x] wired into all eleven routes with per-route caps (32 KB tts/search,
+  64 KB memory, 2 MB admin, 4 MB files, 8 MB chat/series, 12 MB images)
+- [x] permanent self-test: oversized chat/search/memory bodies → 413, valid
+  small bodies still pass; full HTTP sweep re-verifies every patched route
+
+### Sandbox postMessage hardening
+- the parent page accepted `__ohg` messages from ANY window (any page that
+  embedded the site could fake sandbox results/log lines inside its own
+  embedded copy); now only the runner/preview iframe's `contentWindow` is
+  trusted (`ev.source` check)
+- the runner iframe only accepts `__ohg_run` starts from its own parent
+
+### Agent resume payload sanitised
+- `resume.messages` was client-supplied and re-entered the model conversation
+  unvalidated. Now: ≤40 messages, content capped at 24k chars, roles
+  whitelisted (user/assistant/system/tool), tool_calls ≤8 - a tampered client
+  can no longer inject a 30 MB "tool result" or a fake system turn
+
+### CSS injection closed
+- SiteProvider interpolated CMS-editable colour strings straight into a
+  <style> block; a compromised admin account could inject arbitrary CSS rules.
+  Colours now pass a strict token whitelist (hex / rgb()/hsl() / plain colour
+  words) with theme defaults as fallback
+
+### Smaller fixes
+- sitemap.xml now includes the flagship /agent page (priority 0.9)
+- Field-brief page: run()/speak() no longer leave unhandled rejections on
+  network failure; speech falls back to the device voice
+
+### Audited clean this pass
+- diagram.ts (repair-then-validate + strict securityLevel, well tested),
+  dhims2.ts parser, compute.ts shunting-yard, Charts (?? 0 guards), Markdown,
+  Nav/Footer/Disclaimer, layout/error/not-found/robots, types/pg.d.ts ✓
+- Battery: typecheck, eslint 0 errors, build 18/18, 30 platform + 56 agent
+  self-tests, 24-check HTTP sweep over every patched route ✓
+
 ## 2026-08-25 (pass 4) Forensic sweep - multi-tool-call transcripts + blob-URL leaks
 
 ### CRITICAL: a model emitting several client tool calls corrupted the transcript

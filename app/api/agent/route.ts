@@ -144,6 +144,40 @@ export async function POST(req: Request) {
   const requested = Array.isArray(body.tools) && body.tools.length ? body.tools : TOOLS.map((t) => t.name);
   const allowedTools = TOOLS.map((t) => t.name).filter((n) => requested.includes(n));
 
+  /**
+   * The resume transcript travels to the browser and back. It is client-
+   * supplied, so each message is capped before it re-enters the model
+   * conversation - a tampered client must not be able to inject a 30 MB
+   * "tool result" (or an injected system turn) back into the prompt.
+   */
+  const resume = body.resume
+    ? {
+        callId: String(body.resume.callId || "").slice(0, 120),
+        output: String(body.resume.output || "").slice(0, 12_000),
+        priorText: typeof body.resume.priorText === "string" ? body.resume.priorText.slice(0, 60_000) : undefined,
+        messages: (Array.isArray(body.resume.messages) ? body.resume.messages : [])
+          .slice(-40)
+          .map((m) => ({
+            role:
+              m?.role === "assistant" || m?.role === "user" || m?.role === "system" || m?.role === "tool"
+                ? m.role
+                : "user",
+            content:
+              typeof m?.content === "string"
+                ? m.content.slice(0, 24_000)
+                : Array.isArray(m?.content)
+                  ? m.content.slice(0, 8)
+                  : "",
+            ...(Array.isArray(m?.tool_calls) ? { tool_calls: m.tool_calls.slice(0, 8) } : {}),
+            ...(typeof m?.tool_call_id === "string" ? { tool_call_id: m.tool_call_id.slice(0, 120) } : {}),
+            ...(typeof m?.name === "string" ? { name: m.name.slice(0, 80) } : {}),
+          })),
+      }
+    : undefined;
+  if (body.resume && !resume?.messages.length) {
+    return NextResponse.json({ error: "Resume payload missing messages." }, { status: 400 });
+  }
+
   /** A pinned model must be a real slug; anything odd is treated as Auto. */
   const model = typeof body.model === "string" && isValidModelSlug(body.model.trim()) ? body.model.trim() : undefined;
 
@@ -171,7 +205,7 @@ export async function POST(req: Request) {
           temperature: typeof body.temperature === "number" ? Math.min(Math.max(body.temperature, 0), 1.5) : undefined,
           reasoning: Boolean(body.reasoning),
           conversationId: body.conversationId || undefined,
-          resume: body.resume,
+          resume,
           emit: (event) => send(event.type, event),
         });
         send("result", {

@@ -6,12 +6,15 @@ import { runForecast } from "@/lib/forecast";
 import { languageInstruction } from "@/lib/languages";
 import { redactMessages, redactText } from "@/lib/redact";
 import { recordAudit, saveDB, uid } from "@/lib/store";
+import { readJsonBody } from "@/lib/body";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 8_000_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     messages?: { role: "user" | "assistant"; content: string }[];
     search?: boolean;
     diseaseId?: string;

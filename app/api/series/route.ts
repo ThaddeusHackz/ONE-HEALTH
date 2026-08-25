@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/body";
 import { DHIMS2_TEMPLATE, parseDhims2 } from "@/lib/dhims2";
 import { openRouterReview } from "@/lib/or-review";
 import { findOfficialSeries, getDB, recordAudit, saveDB, uid } from "@/lib/store";
@@ -26,7 +27,9 @@ export function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as {
+  const read = await readJsonBody(req, 8_000_000);
+  if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  const body = read.data as {
     diseaseId?: string;
     regionId?: string;
     districtId?: string;
