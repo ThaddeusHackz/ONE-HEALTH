@@ -54,6 +54,8 @@ interface StreamFrame {
   file?: WorkspaceFile;
   message?: string;
   model?: string;
+  from?: string;
+  reason?: string;
   conversationId?: string;
   pending?: {
     callId?: string;
@@ -92,6 +94,8 @@ export function useAgent() {
   const [pendingAsk, setPendingAsk] = useState<PendingAsk | null>(null);
   const [logs, setLogs] = useState<{ level: string; text: string }[]>([]);
   const [notice, setNotice] = useState("");
+  /** Set when the server dropped a pinned model for the Auto chain. */
+  const [modelReset, setModelReset] = useState<{ from: string; reason: string } | null>(null);
   const [preview, setPreview] = useState<{ language: SandboxLanguage; code: string } | null>(null);
 
   const sandboxRef = useRef<SandboxHandle | null>(null);
@@ -297,6 +301,12 @@ export function useAgent() {
             break;
           case "error":
             setError(String(parsed.message || "Agent error"));
+            break;
+          case "model_reset":
+            setModelReset({
+              from: String(parsed.from || ""),
+              reason: String(parsed.reason || "its credits ran out"),
+            });
             break;
           case "result":
             finalText = typeof parsed.text === "string" && parsed.text ? parsed.text : finalText;
@@ -684,6 +694,8 @@ export function useAgent() {
     pendingAsk,
     logs,
     notice,
+    modelReset,
+    clearModelReset: () => setModelReset(null),
     preview,
     setPreview,
     setSandbox,

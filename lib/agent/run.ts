@@ -7,6 +7,8 @@ import {
   type ToolCallWire,
 } from "@/lib/openrouter";
 import { redactText } from "@/lib/redact";
+import { isCreditError, isFatalAuth } from "@/lib/openrouter";
+import { isGeminiQuotaError } from "./gemini";
 import { recordAudit } from "@/lib/store";
 import { AGENT_SYSTEM_PROMPT, isClientTool, runTool, toolSpecs, type ToolContext } from "./tools";
 import { distillMemory, recallFacts, upsertConversation } from "./memory";
@@ -186,6 +188,7 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
   const { input, emit, toolLog } = args;
   let messages = args.messages;
   let finalText = args.seedText || "";
+  let pinnedModel = input.model || "";
   let model = "";
   let reasoning = "";
 
@@ -193,18 +196,48 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
     let streamed = "";
     emit({ type: "status", text: step === 0 ? "Thinking…" : `Reasoning step ${step + 1}…` });
 
-    const result = await completeStream({
+    const streamOpts = {
       messages,
-      models: input.model ? [input.model] : undefined,
       temperature: input.temperature ?? 0.4,
       maxTokens: input.mode === "builder" ? 3600 : 2600,
       tools: toolSpecs(input.allowedTools),
       reasoning: input.reasoning,
-      onDelta: (text, think) => {
+      onDelta: (text: string, think: string) => {
         if (text) emit({ type: "delta", text });
         if (think) emit({ type: "reasoning", text: think });
       },
-    });
+    };
+
+    /**
+     * A pinned model is used on its own - no chain, no substitution - until it
+     * runs out of credit or the key stops authorising it. Only then does the
+     * turn fall back to the Auto chain, and the browser is told to move the
+     * dropdown back to "Auto (fallback chain)" so the UI matches reality.
+     *
+     * The Auto chain itself is untouched: passing `models: undefined` is exactly
+     * what an unpinned turn has always done.
+     */
+    let result;
+    if (pinnedModel) {
+      try {
+        result = await completeStream({ ...streamOpts, models: [pinnedModel] });
+      } catch (err) {
+        const e = err as { status?: number; message?: string };
+        const status = e.status || 0;
+        const message = e.message || String(err);
+        const outOfCredit = isCreditError(status, message) || isFatalAuth(status, message) || isGeminiQuotaError(status, message);
+        if (!outOfCredit) throw err;
+        const reason = isFatalAuth(status, message)
+          ? "the key stopped authorising it"
+          : "its credits ran out";
+        emit({ type: "status", text: `${pinnedModel} ${reason} - switching to the Auto fallback chain.` });
+        emit({ type: "model_reset", from: pinnedModel, reason });
+        pinnedModel = "";
+        result = await completeStream({ ...streamOpts, models: undefined });
+      }
+    } else {
+      result = await completeStream({ ...streamOpts, models: undefined });
+    }
 
     streamed = result.text;
     model = result.model;

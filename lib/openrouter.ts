@@ -146,7 +146,7 @@ function extractText(content: unknown): string {
   return "";
 }
 
-function isFatalAuth(status: number, message: string) {
+export function isFatalAuth(status: number, message: string) {
   if (status === 401) return true;
   return (
     status === 403 &&
@@ -154,7 +154,7 @@ function isFatalAuth(status: number, message: string) {
   );
 }
 
-function isCreditError(status: number, message: string) {
+export function isCreditError(status: number, message: string) {
   return status === 402 || /402|credit|balance|payment required/i.test(message);
 }
 

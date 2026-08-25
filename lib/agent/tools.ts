@@ -1,7 +1,8 @@
 import { GHANA_CONTEXT, DISEASES, REGIONS } from "@/lib/ghana";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { ghanaWeather } from "@/lib/weather";
-import { visionAnalyze, type ToolCallSpec } from "@/lib/openrouter";
+import { visionAnalyze, type ChatMessage, type ToolCallSpec } from "@/lib/openrouter";
+import { geminiComplete, geminiConfigured } from "./gemini";
 import { redactText } from "@/lib/redact";
 import { recordAudit } from "@/lib/store";
 import { agentWebSearch, fetchPageText, formatAgentHits } from "./web";
@@ -196,25 +197,52 @@ export const TOOLS: ToolDefinition[] = [
       if (!ctx.images.length && !ctx.docs.length) {
         return fail("No attachments in this turn. Ask the user to attach the file or photo.");
       }
-      const result = await visionAnalyze({
-        prompt: String(args.question || "Describe exactly what this document or image contains."),
-        images: ctx.images,
-        files: ctx.docs,
-        extraSystem:
-          "You are the vision tool of ONE HEALTH GHANA. Extract only what is visible. Flag possible identifiers without repeating them.",
-      });
-      recordAudit({ actor: "agent", action: "vision", model: result.model, redactions: 0, detail: String(args.question).slice(0, 80) });
-      if (result.degraded) {
-        // Never let a blind answer masquerade as a reading of the attachment.
-        return fail(
-          `VISION FAILED - the attachment was NOT read. ${result.degraded}\n` +
-            `Tell the user the file could not be opened and why; do not describe its contents.\n` +
-            `Model note: ${result.text.slice(0, 600)}`,
-        );
+      const prompt = String(args.question || "Describe exactly what this document or image contains.");
+      const extraSystem =
+        "You are the vision tool of ONE HEALTH GHANA. Extract only what is visible. Flag possible identifiers without repeating them.";
+
+      /**
+       * Vision runs on Gemini. OpenRouter is used only when no Google key is
+       * configured at all, and the answer says which provider produced it - a
+       * reader must never have to guess what actually looked at the file.
+       */
+      let engine: "gemini" | "openrouter-fallback";
+      let text: string;
+      let model: string;
+      if (geminiConfigured()) {
+        engine = "gemini";
+        const messages: ChatMessage[] = [
+          { role: "system", content: extraSystem },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              ...ctx.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+              ...ctx.docs.map((f) => ({ type: "file" as const, file: f })),
+            ],
+          },
+        ];
+        const result = await geminiComplete({ messages, temperature: 0.2, maxTokens: 2048 });
+        text = result.text;
+        model = result.model;
+      } else {
+        engine = "openrouter-fallback";
+        const result = await visionAnalyze({ prompt, images: ctx.images, files: ctx.docs, extraSystem });
+        if (result.degraded) {
+          return fail(
+            `VISION FAILED - the attachment was NOT read. ${result.degraded}\n` +
+              `No GEMINI_API_KEY is configured and the OpenRouter vision models also failed.\n` +
+              `Tell the user the file could not be opened; do not describe its contents.`,
+          );
+        }
+        text = result.text;
+        model = result.model;
       }
+
+      recordAudit({ actor: "agent", action: "vision", model, redactions: 0, detail: String(args.question).slice(0, 80) });
       return ok(
-        `VISION (${result.model}):\n${result.text}`,
-        [{ type: "status", text: `Vision read via ${result.model}` }],
+        `VISION (${engine === "gemini" ? "Gemini" : "OpenRouter fallback"} · ${model}):\n${text}`,
+        [{ type: "status", text: `Vision read via ${model} (${engine})` }],
       );
     },
   },

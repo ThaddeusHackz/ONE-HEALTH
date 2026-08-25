@@ -18,6 +18,7 @@ import {
   Trash2,
   TriangleAlert,
   Wand2,
+  X,
 } from "lucide-react";
 import { AgentComposer, STARTER_PROMPTS } from "@/components/agent/AgentComposer";
 import { AgentMessage, AskCard } from "@/components/agent/AgentMessage";
@@ -55,6 +56,7 @@ export default function AgentPage() {
   const [railOpen, setRailOpen] = useState(true);
   const [focusFile, setFocusFile] = useState<WorkspaceFile | null>(null);
   const [keys, setKeys] = useState<KeyStatus | null>(null);
+  const [resetNotice, setResetNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -79,6 +81,23 @@ export default function AgentPage() {
     setWorkspaceTab("preview");
     setSandboxOpen(true);
   }, [previewSignature]);
+
+  /**
+   * A pinned model is used on its own until its credits run out. The server
+   * then continues the turn on the Auto chain and tells us, so the dropdown
+   * moves back to "Auto (fallback chain)" and the UI stops claiming a pin that
+   * is no longer in effect. The Auto chain itself is untouched.
+   */
+  useEffect(() => {
+    const reset = agent.modelReset;
+    if (!reset) return;
+    patch({ model: "" });
+    agent.clearModelReset();
+    setResetNotice(
+      `${reset.from} ${reset.reason}, so this conversation switched back to the Auto fallback chain.`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.modelReset]);
 
   /* Escape slides the drawer back out. */
   useEffect(() => {
@@ -234,7 +253,7 @@ export default function AgentPage() {
                 value={settings.model}
                 onChange={(e) => patch({ model: e.target.value })}
                 className="a-mono rounded-xl border border-line bg-white px-2 py-1.5 text-[11px]"
-                title="Pin a model, or leave on Auto to walk the fallback chain"
+                title="Pin one model and it is used on its own until its credits run out, then this returns to Auto automatically. Leave on Auto to walk the fallback chain."
               >
                 <option value="">Auto (fallback chain)</option>
                 {["openai/gpt-4.1-mini", "google/gemini-2.5-flash", "openai/gpt-4o", "google/gemini-2.5-pro", "anthropic/claude-sonnet-4", "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct:free"].map((m) => (
@@ -334,6 +353,16 @@ export default function AgentPage() {
                 onAnswer={(a) => agent.answerAsk(a)}
                 onCancel={() => agent.answerAsk("Use your best judgement and continue.")}
               />
+            )}
+
+            {resetNotice && (
+              <div className="a-card a-in ml-12 flex items-start gap-2 border-teal-soft p-3 text-[12px]">
+                <span className="a-dot mt-1 h-2 w-2 shrink-0 rounded-full bg-teal" />
+                <span className="flex-1">{resetNotice}</span>
+                <button className="text-muted hover:text-ink" onClick={() => setResetNotice("")} aria-label="Dismiss">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
 
             {agent.notice && (

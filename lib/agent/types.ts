@@ -19,6 +19,7 @@ export type AgentEventType =
   | "sandbox_result"
   | "memory"
   | "status"
+  | "model_reset"
   | "done"
   | "error";
 

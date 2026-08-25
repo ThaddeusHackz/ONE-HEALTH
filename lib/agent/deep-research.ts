@@ -1,4 +1,5 @@
 import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrouter";
+import { geminiComplete, geminiConfigured } from "./gemini";
 import { agentWebSearch, fetchPageText, type AgentSearchHit } from "./web";
 import type { Citation } from "./types";
 
@@ -110,32 +111,44 @@ Rules:
     },
   ];
 
-  const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+  /**
+   * Synthesis runs on Gemini. OpenRouter is used only when no Google key is
+   * configured at all, and the brief says which engine wrote it.
+   */
+  let markdown: string;
+  let engine: string;
+  if (geminiConfigured()) {
+    const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 2200 });
+    markdown = result.text;
+    engine = `Gemini · ${result.model}`;
+  } else {
+    const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+    markdown = result.text;
+    engine = `OpenRouter fallback · ${result.model}`;
+  }
 
   return {
     question,
     queries: limited,
     citations: cited.map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
-    markdown: result.text,
+    markdown: `${markdown}\n\n---\n*Synthesised by ${engine} from ${pages.length} live source(s) read.*`,
     sourcesRead: pages.length,
   };
 }
 
 async function decompose(question: string, focus: string): Promise<string[]> {
   try {
-    const result = await complete({
-      json: true,
-      temperature: 0.2,
-      maxTokens: 400,
-      messages: [
+    const decomposeMessages: ChatMessage[] = [
         {
           role: "system" as const,
           content:
             'Break a research question into 3-4 distinct, search-engine-ready sub-queries. Cover different angles (definition/current state, data or evidence, Ghana or local context when relevant, risks or counter-evidence). Return strict JSON: {"queries":["..."]}',
         },
-        { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
-      ] satisfies ChatMessage[],
-    });
+      { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
+    ];
+    const result = geminiConfigured()
+      ? await geminiComplete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages })
+      : await complete({ json: true, temperature: 0.2, maxTokens: 400, messages: decomposeMessages });
     const parsed = JSON.parse(extractJson(result.text)) as { queries?: string[] };
     const queries = (parsed.queries || []).map((q) => String(q).trim()).filter(Boolean);
     return queries.length ? queries : defaultQueries(question, focus);

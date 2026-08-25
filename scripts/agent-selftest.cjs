@@ -412,6 +412,87 @@ function assert(cond, message) {
     return out.output.slice(0, 50);
   });
 
+  const gemini = require(path.join(compiled, "agent/gemini.js"));
+
+  check("gemini: client exists, is key-gated and refuses an OpenRouter key", () => {
+    assert(typeof gemini.geminiComplete === "function", "geminiComplete missing");
+    assert(typeof gemini.geminiConfigured === "function", "geminiConfigured missing");
+    assert(gemini.GEMINI_MODEL_CHAIN.length > 1, "no model chain");
+    assert(gemini.geminiConfigured() === false, "should be unconfigured without a key");
+    const src = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
+    assert(/sk-or-/.test(src) && /geminiKey/.test(src), "geminiKey must reject an OpenRouter key");
+    return `${gemini.GEMINI_MODEL_CHAIN.length} models; sk-or guard intact`;
+  });
+
+  check("gemini: quota and auth errors are told apart", () => {
+    assert(gemini.isGeminiQuotaError(429, "Resource exhausted"), "429 must read as quota");
+    assert(gemini.isGeminiQuotaError(0, "You exceeded your current quota"), "quota text missed");
+    assert(!gemini.isGeminiQuotaError(401, "API key not valid"), "auth misread as quota");
+    assert(gemini.isGeminiAuthError(403, "API key not valid"), "403 must read as auth");
+    assert(!gemini.isGeminiAuthError(429, "quota"), "quota misread as auth");
+    return "quota -> retry next model; auth -> stop";
+  });
+
+  await checkAsync("gemini: no key is a clean failure, never a silent empty answer", async () => {
+    let threw = false;
+    try {
+      await gemini.geminiComplete({ messages: [{ role: "user", content: "hi" }] });
+    } catch (err) {
+      threw = true;
+      assert(/GEMINI_API_KEY is not set/.test(err.message), err.message);
+    }
+    assert(threw, "geminiComplete resolved with no key configured");
+    return "throws with a named key, does not return blank text";
+  });
+
+  check("gemini: message conversion is safe for the shapes the agent actually sends", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/gemini.ts"), "utf8");
+    assert(/systemInstruction/.test(src), "system prompt is not mapped");
+    assert(/contents\[0\]\.role === "model"/.test(src), "a leading model turn is not dropped");
+    assert(/last\.role === role/.test(src), "consecutive same-role turns are not merged");
+    assert(/dataUrlToInline/.test(src), "attachments are not converted to inlineData");
+    // Strip comments first: the word appears in a doc comment explaining what
+    // this client deliberately does NOT do, which is not a request for images.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert(!/responseModalities/.test(code), "text client must not request image output");
+    assert(/maxOutputTokens/.test(code) && /temperature/.test(code), "generationConfig incomplete");
+    return "system/role/inlineData handled; no image modality in code";
+  });
+
+  check("vision: runs on Gemini, and says so when it does not", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
+    assert(/if \(geminiConfigured\(\)\)/.test(src), "vision_read is not Gemini-first");
+    assert(/geminiComplete\(\{ messages/.test(src), "vision_read does not call Gemini");
+    assert(/openrouter-fallback/.test(src), "no explicit fallback labelling");
+    assert(/Gemini" : "OpenRouter fallback/.test(src), "the answer does not name its provider");
+    return "Gemini first; OpenRouter only with no key, and labelled";
+  });
+
+  check("research: decompose and synthesis both run on Gemini", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
+    const calls = (src.match(/geminiComplete\(/g) || []).length;
+    assert(calls >= 2, `expected decompose + synthesis on Gemini, found ${calls} call(s)`);
+    assert(/Synthesised by \$\{engine\}/.test(src), "the brief does not name its engine");
+    assert(/OpenRouter fallback/.test(src), "no labelled fallback");
+    return `${calls} Gemini calls; engine named in the brief`;
+  });
+
+  check("models: a pinned model is singular, then auto-resets on exhausted credit", () => {
+    const src = fs.readFileSync(path.join(ROOT, "lib/agent/run.ts"), "utf8");
+    assert(/pinnedModel/.test(src), "no pinned-model tracking");
+    assert(/models: \[pinnedModel\]/.test(src), "a pinned model is not used on its own");
+    assert(/isCreditError\(status, message\)/.test(src), "credit exhaustion is not detected");
+    assert(/"model_reset"/.test(src), "the browser is never told about the reset");
+    assert(/pinnedModel = ""/.test(src), "the pin is not cleared for later steps");
+    // The Auto chain itself must be untouched: unpinned turns still pass undefined.
+    assert(/models: undefined/.test(src), "the Auto chain call changed");
+    const client = fs.readFileSync(path.join(ROOT, "components/agent/useAgent.ts"), "utf8");
+    assert(/case "model_reset":/.test(client), "client does not handle model_reset");
+    const page = fs.readFileSync(path.join(ROOT, "app/agent/page.tsx"), "utf8");
+    assert(/patch\(\{ model: "" \}\)/.test(page), "the dropdown is not returned to Auto");
+    return "pin honoured -> credit out -> Auto chain + dropdown reset";
+  });
+
   await checkAsync("vision: a blind answer can never pose as a reading", async () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
     assert(/degraded\??:/.test(src), "ORResult has no degraded flag");
