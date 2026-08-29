@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "fs";
 import { join } from "path";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { adminEmail, adminName, adminPassword } from "./env";
@@ -144,7 +144,13 @@ function persist(db: Database) {
   cache = db;
   try {
     mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(DB_PATH, JSON.stringify(db));
+    // Atomic write: serialise to a temp file in the SAME directory, then rename
+    // over db.json. renameSync is atomic on POSIX, so a concurrent load() can
+    // never observe a half-written JSON file (a truncated read used to surface
+    // as "Unexpected end of JSON input" 500s when two requests raced).
+    const tmp = `${DB_PATH}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(db));
+    renameSync(tmp, DB_PATH);
   } catch (err) {
     console.error("[store] persist degraded to memory:", (err as Error).message);
   }

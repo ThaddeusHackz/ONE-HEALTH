@@ -8,48 +8,62 @@ import { GHANA_CONTEXT } from "./ghana";
  */
 export const MAX_MODELS_PER_REQUEST = 3;
 
-/** Fast, widely available paid slugs first. Invalid slugs are skipped per group. */
+/**
+ * Auto-fallback chain, verified live on OpenRouter on 2026-08-29.
+ *
+ * The 2025 chain silently rotted: anthropic/claude-3.5-sonnet,
+ * mistralai/mistral-large-2411 and every legacy `:free` slug
+ * (meta-llama/llama-3.3-70b-instruct:free, google/gemma-3-27b-it:free, ...)
+ * now return "No endpoints found" - and because a dead slug poisons its whole
+ * 3-model group, "Claude/Mistral/DeepSeek don't work" was literally true.
+ * On top of the refresh below, `liveModels()` filters the chain against
+ * OpenRouter's public model catalogue at runtime, so a slug that dies next
+ * month is skipped automatically instead of killing its group.
+ */
 export const CHAT_MODELS = [
   "openai/gpt-4.1-mini",
   "google/gemini-2.5-flash",
   "openai/gpt-4o-mini",
   "openai/gpt-4.1",
   "google/gemini-2.5-pro",
-  "openai/gpt-4o",
+  "anthropic/claude-sonnet-4.6",
+  "deepseek/deepseek-v3.2",
   "anthropic/claude-sonnet-4",
-  "anthropic/claude-3.5-sonnet",
   "deepseek/deepseek-chat",
+  "mistralai/mistral-small-3.2-24b-instruct",
   "meta-llama/llama-3.3-70b-instruct",
-  "mistralai/mistral-large-2411",
+  "mistralai/mistral-nemo",
 ];
 
+/**
+ * Free tier, each slug verified live on 2026-08-29. Free models rotate fast -
+ * openai/gpt-oss-120b:free, inclusionai/ling-3.0-flash:free and every legacy
+ * :free slug are already dead - which is exactly why liveModels() filters this
+ * list against the public catalogue before any request goes out.
+ */
 export const FREE_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "google/gemma-3-27b-it:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free",
-];
-
-export const VISION_MODELS = [
-  "google/gemini-2.5-flash",
-  "openai/gpt-4o-mini",
-  "google/gemini-2.5-pro",
-  "openai/gpt-4.1",
-  "openai/gpt-4o",
-  "anthropic/claude-sonnet-4",
-  "anthropic/claude-3.5-sonnet",
-  "qwen/qwen2.5-vl-72b-instruct:free",
-  "google/gemma-3-27b-it:free",
+  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
 ];
 
 export const FAST_MODELS = [
   "google/gemini-2.5-flash",
   "openai/gpt-4.1-mini",
   "openai/gpt-4o-mini",
-  "deepseek/deepseek-chat",
+  "deepseek/deepseek-v3.2",
   ...FREE_MODELS,
 ];
+
+/**
+ * Base URL override. Production always talks to https://openrouter.ai; the
+ * forensic self-test points it at a local mock so the full fallback chain,
+ * pinning and error taxonomy can be exercised without a real key.
+ */
+function apiBase(): string {
+  const raw = (process.env.OPENROUTER_API_BASE || "https://openrouter.ai/api/v1").trim();
+  return raw.replace(/\/+$/, "");
+}
 
 export type ContentPart =
   | { type: "text"; text: string }
@@ -120,6 +134,99 @@ function modelChain(preferred?: string[]) {
   ]);
 }
 
+/* ------------------------------------------------------------------ *
+ * Live model catalogue (self-healing chain).
+ *
+ * GET /api/v1/models is public (no auth). Once per process - and never for
+ * longer than 10 minutes - we fetch it and drop any chain slug that OpenRouter
+ * no longer lists. That is what keeps "the models after Gemini stopped
+ * working" from EVER happening again: when a provider retires a slug, the
+ * chain simply walks past it instead of sending a request that 404s.
+ * ------------------------------------------------------------------ */
+
+interface CatalogueState {
+  at: number;
+  /** null = the fetch failed; fall back to the static chain. */
+  ids: Set<string> | null;
+}
+
+let catalogue: CatalogueState = { at: 0, ids: null };
+const CATALOGUE_TTL_MS = 10 * 60 * 1000;
+
+async function fetchCatalogue(force = false): Promise<Set<string> | null> {
+  if (!force && catalogue.ids && Date.now() - catalogue.at < CATALOGUE_TTL_MS) return catalogue.ids;
+  try {
+    const res = await fetch(`${apiBase()}/models`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    const ids = new Set((json.data || []).map((m) => m.id).filter(Boolean) as string[]);
+    catalogue = { at: Date.now(), ids: ids.size ? ids : null };
+    return catalogue.ids;
+  } catch {
+    // Network down, OpenRouter hiccup: keep the previous knowledge (if any)
+    // and otherwise trust the static chain.
+    catalogue = { at: Date.now(), ids: catalogue.ids };
+    return catalogue.ids;
+  }
+}
+
+/**
+ * Filter a model list down to slugs OpenRouter currently serves. Never
+ * shrinks to empty - if nothing matches (catalogue unreachable or a fully
+ * custom chain) the input is returned untouched.
+ */
+export async function liveModels(models: string[]): Promise<string[]> {
+  if (!models.length) return models;
+  let ids: Set<string> | null;
+  try {
+    ids = await fetchCatalogue();
+  } catch {
+    ids = null;
+  }
+  if (!ids) return models;
+  const filtered = models.filter((m) => m === "openrouter/auto" || ids!.has(m));
+  return filtered.length ? filtered : models;
+}
+
+/** Forget the cached catalogue (used by tests). */
+export function resetModelCatalogue(): void {
+  catalogue = { at: 0, ids: null };
+}
+
+/**
+ * Catalogue status for /api/diagnostics: distinguishes "checked and live"
+ * from "could not be checked". A chain that could not be verified is NOT
+ * reported as verified - an operator must never be told 15/15 models are
+ * fine when the catalogue was unreachable.
+ */
+export async function modelCatalogueStatus(models: string[]): Promise<{
+  reachable: boolean;
+  live: string[];
+  dead: string[];
+  total: number;
+}> {
+  // Deliberately does NOT use the cache: a status probe must reflect what the
+  // catalogue says RIGHT NOW, not a stale-but-useful snapshot.
+  try {
+    const res = await fetch(`${apiBase()}/models`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) return { reachable: false, live: [], dead: [], total: 0 };
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    const ids = new Set((json.data || []).map((m) => m.id).filter(Boolean) as string[]);
+    if (!ids.size) return { reachable: false, live: [], dead: [], total: 0 };
+    const live = models.filter((m) => m === "openrouter/auto" || ids.has(m));
+    const dead = models.filter((m) => m !== "openrouter/auto" && !ids.has(m));
+    return { reachable: true, live, dead, total: ids.size };
+  } catch {
+    return { reachable: false, live: [], dead: [], total: 0 };
+  }
+}
+
 class RouterError extends Error {
   status: number;
   constructor(message: string, status = 0) {
@@ -162,6 +269,46 @@ function isModelsLimitError(message: string) {
   return /models['"]?\s+array must have 3 items or fewer|at most 3/i.test(message);
 }
 
+/**
+ * A slug OpenRouter no longer serves (or never had). These arrive as
+ * HTTP 400/404 with "No endpoints found", "not a valid model ID" or
+ * "No allowed providers" - and in a multi-model `models` request the WHOLE
+ * group fails, so the dead slug must be extracted and the group retried
+ * without it. This is the other half of why Claude/Mistral/DeepSeek "did not
+ * work": dead slugs sat inside their fallback groups, poisoning every request
+ * they were part of.
+ */
+function deadSlugsFromError(message: string, group: string[]): string[] {
+  if (
+    !/no endpoints found|not a valid model|no allowed providers|no providers|model not found|does not exist|unsupported model/i.test(
+      message,
+    )
+  ) {
+    return [];
+  }
+  const dead = new Set<string>();
+  for (const slug of group) {
+    if (message.includes(slug)) {
+      dead.add(slug);
+      continue;
+    }
+    // Some errors name only the model half ("claude-3.5-sonnet" without the
+    // vendor). Match that fragment - but never the bare vendor, which would
+    // wrongly kill every model of one provider in the group.
+    const model = slug.split("/").slice(1).join("/");
+    if (
+      model &&
+      new RegExp(`(^|[^a-z0-9])${model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(message)
+    ) {
+      dead.add(slug);
+    }
+  }
+  return [...dead];
+}
+
+/** Slugs proven dead this process - cached so a poison slug is only ever paid for once. */
+const deadKnown = new Set<string>();
+
 async function postChat(body: Record<string, unknown>, timeoutMs = 75000): Promise<ORResult> {
   const key = openRouterKey();
   if (!key) throw new RouterError("OPENROUTER_API_KEY is not set", 0);
@@ -173,7 +320,7 @@ async function postChat(body: Record<string, unknown>, timeoutMs = 75000): Promi
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch(`${apiBase()}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -230,6 +377,15 @@ async function tryGroup(group: string[], base: Record<string, unknown>): Promise
         provider: { allow_fallbacks: true },
       });
     }
+    // A retired slug inside a multi-model group fails the WHOLE group. Drop
+    // the named dead slug(s) and retry the survivors rather than skipping to
+    // the next group - the survivors are the higher-priority models.
+    const dead = deadSlugsFromError(e.message, models);
+    const survivors = models.filter((m) => !dead.includes(m));
+    if (dead.length && survivors.length && survivors.length !== models.length) {
+      for (const d of dead) deadKnown.add(d);
+      return tryGroup(survivors, base);
+    }
     throw e;
   }
 }
@@ -237,8 +393,10 @@ async function tryGroup(group: string[], base: Record<string, unknown>): Promise
 async function tryChain(models: string[], base: Record<string, unknown>): Promise<ORResult> {
   const tried: string[] = [];
   const errors: string[] = [];
+  // Slugs already proven dead in this process never get asked again.
+  const walk = models.filter((m) => !deadKnown.has(m));
 
-  for (const group of chunk(models, MAX_MODELS_PER_REQUEST)) {
+  for (const group of chunk(walk.length ? walk : models, MAX_MODELS_PER_REQUEST)) {
     tried.push(...group);
     try {
       const r = await tryGroup(group, base);
@@ -324,13 +482,13 @@ export async function complete(opts: {
     throw new RouterError(`${slug} could not complete the request. ${lastError.slice(0, 260)}`, lastStatus);
   }
 
-  const models = modelChain(opts.models);
+  const models = await liveModels(modelChain(opts.models));
   try {
     return await tryChain(models, body);
   } catch (err) {
     const e = err as RouterError;
     if (isCreditError(e.status, e.message) || /402|credit|balance|quota|payment/i.test(e.message)) {
-      return tryChain(unique([...FREE_MODELS, "openrouter/auto"]), body);
+      return tryChain(await liveModels(unique([...FREE_MODELS, "openrouter/auto"])), body);
     }
     throw err;
   }
@@ -384,7 +542,7 @@ async function postStream(
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch(`${apiBase()}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -505,7 +663,7 @@ export async function completeStream(opts: {
   pinned?: boolean;
   onDelta: (text: string, reasoning: string) => void;
 }): Promise<ORStreamResult> {
-  const models = modelChain(opts.models);
+  const models = await liveModels(modelChain(opts.models));
   const withTools = (opts.tools || []).length > 0;
   const base: Record<string, unknown> = {
     temperature: opts.temperature ?? 0.4,
@@ -581,7 +739,9 @@ export async function completeStream(opts: {
   const errors: string[] = [];
 
   for (const attempt of attempts) {
-    const chain = Array.isArray(attempt.models) ? (attempt.models as string[]) : models;
+    const chain = await liveModels(
+      Array.isArray(attempt.models) ? (attempt.models as string[]) : models,
+    );
     for (const group of chunk(chain, MAX_MODELS_PER_REQUEST)) {
       try {
         const result = await postStream(
@@ -602,6 +762,22 @@ export async function completeStream(opts: {
         if (isCreditError(e.status, e.message)) {
           lastError = errors.join(" | ");
           throw new RouterError(e.message, 402);
+        }
+        // Same poison-slug recovery as the non-streaming path: a retired slug
+        // fails its whole group, so strip it and retry the survivors.
+        const dead = deadSlugsFromError(e.message, group);
+        const survivors = group.filter((m) => !dead.includes(m));
+        if (dead.length && survivors.length && survivors.length !== group.length) {
+          for (const d of dead) deadKnown.add(d);
+          try {
+            const retry = await postStream(
+              { ...attempt, models: survivors, model: survivors[0], provider: { allow_fallbacks: true, sort: "throughput" } },
+              opts.onDelta,
+            );
+            return retry;
+          } catch (err2) {
+            errors.push(`${survivors.join(" → ")}: ${(err2 as RouterError).message}`);
+          }
         }
       }
     }
@@ -624,53 +800,6 @@ export async function completeWithSystem(opts: {
     { role: "user", content: opts.user },
   ];
   return complete({ messages, models: opts.models, temperature: opts.temperature });
-}
-
-export async function visionAnalyze(opts: {
-  prompt: string;
-  images: string[];
-  files?: { filename: string; file_data: string }[];
-  extraSystem?: string;
-}): Promise<ORResult> {
-  const parts: ContentPart[] = [
-    { type: "text", text: opts.prompt },
-    ...opts.images.map((url) => ({
-      type: "image_url" as const,
-      image_url: { url },
-    })),
-    ...(opts.files || []).map((file) => ({ type: "file" as const, file })),
-  ];
-  const attachmentCount = opts.images.length + (opts.files?.length || 0);
-  try {
-    return await completeWithSystem({
-      user: parts,
-      extraSystem: opts.extraSystem,
-      models: VISION_MODELS,
-      temperature: 0.2,
-    });
-  } catch (err) {
-    // This used to silently retry text-only, so a failed vision chain returned a
-    // confident "analysis" of an attachment the model never saw - a hallucination
-    // presented as a reading. The fallback stays (a text answer can still be
-    // useful) but it now says loudly that it could not see the file, and the
-    // caller is told the result is degraded.
-    const reason = (err as Error)?.message || "vision chain failed";
-    const result = await completeWithSystem({
-      user:
-        `${opts.prompt}\n\n` +
-        `IMPORTANT: ${attachmentCount} attachment(s) were supplied but the vision models are unavailable ` +
-        `(${reason.slice(0, 200)}). You have NOT seen the image or document. ` +
-        `Do not describe, transcribe or infer anything about its contents. ` +
-        `Say plainly that the attachment could not be read, and explain what would be needed to read it.`,
-      extraSystem: opts.extraSystem,
-      models: FAST_MODELS,
-      temperature: 0.2,
-    });
-    return {
-      ...result,
-      degraded: `Vision models unavailable - ${attachmentCount} attachment(s) were not read.`,
-    };
-  }
 }
 
 export function fallbackGroups(models = modelChain()) {

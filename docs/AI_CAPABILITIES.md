@@ -49,11 +49,11 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 | Capability | Tool / surface | Key required | Without the key |
 |---|---|---|---|
 | Reasoning, planning, writing, code | agentic loop | `OPENROUTER_API_KEY` | offline notice; local desks still work |
-| Model resilience | 17-model chain in groups of 3, `:free` fallback | `OPENROUTER_API_KEY` | — |
+| Model resilience | 15-model chain in groups of 3, live-catalogue filtering, `:free` fallback | `OPENROUTER_API_KEY` | — |
 | Live web search | `web_search` | `TAVILY_API_KEY` | DuckDuckGo HTML scrape |
 | Read a page | `web_fetch` | none | always available (SSRF-guarded) |
-| Multi-step sourced research | `deep_research` | `OPENROUTER_API_KEY` (+ Tavily) | raw source list only |
-| Vision on any attachment | `vision_read` + inline image parts | `OPENROUTER_API_KEY` | attachments are ignored |
+| Multi-step sourced research | `deep_research` | `GEMINI_API_KEY` (+ Tavily) | raw source list only |
+| Vision on any attachment | `vision_read` (Gemini engine, every mode) | `GEMINI_API_KEY` | loud refusal - never a blind answer |
 | Generate new images | `image_generate` | `GEMINI_API_KEY` | clean failure message |
 | Real stock photography | `image_search` | `UNSPLASH_ACCESS_KEY` | Tavily image results |
 | Code sandbox (JS/HTML/CSS/SVG/JSON/CSV/Markdown) | `sandbox_exec` | none | always available |

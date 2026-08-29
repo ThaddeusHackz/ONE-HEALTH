@@ -112,13 +112,28 @@ These are the shapes the code is written to.
 Implemented in `lib/agent/media.ts`, `lib/openrouter.ts`, `app/api/tts/route.ts`,
 `app/api/transcribe/route.ts`.
 
-### Gemini (image generation only)
+### Gemini (the vision + research + image engine — the independent GEMINI_API_KEY)
 `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`,
-auth header `x-goog-api-key`. Request:
-`{contents:[{role:"user",parts:[{text},{inline_data?}]}], generationConfig:{responseModalities:["TEXT","IMAGE"], responseFormat:{image:{aspectRatio}}}}`.
-Response: `candidates[0].content.parts[].inlineData.data` (base64). REST payloads may use
-either `inlineData` or `inline_data`, so the parser in `lib/agent/media.ts` accepts both
-(`extractGeminiImage`, unit-tested for both shapes).
+auth header `x-goog-api-key`. Three jobs, and ONLY these three:
+
+1. **Vision** — photos, PDFs and documents as `inlineData` parts
+   (`lib/agent/gemini.ts` `geminiVision`, used by `vision_read`, the Vision Lab
+   and One Health ingest). Thinking is disabled on the first attempt so a read
+   can never starve its output budget; quota rotates down the model chain; a
+   bad key is a named auth error. **No OpenRouter fallback exists anywhere.**
+2. **Deep research** — query decomposition + sourced synthesis
+   (`lib/agent/deep-research.ts`), `responseMimeType: application/json` for the
+   decompose step. No key → offline digest; outage → labelled raw digest.
+3. **Image generation** — request
+   `{contents:[{role:"user",parts:[{text},{inline_data?}]}], generationConfig:{responseModalities:["TEXT","IMAGE"], responseFormat:{image:{aspectRatio}}}}`.
+   Response: `candidates[0].content.parts[].inlineData.data` (base64). REST payloads may use
+   either `inlineData` or `inline_data`, so the parser in `lib/agent/media.ts` accepts both
+   (`extractGeminiImage`, unit-tested for both shapes).
+
+Text/vision model chain (newest cheap-first): `gemini-2.5-flash`, `gemini-2.5-pro`,
+`gemini-2.0-flash`, `gemini-2.5-flash-lite` (the retired `gemini-1.5-pro` was removed),
+overridable with `GEMINI_MODELS`. The base URL is overridable with
+`GEMINI_API_BASE` for the forensic mock tests.
 
 **Imagen is deliberately excluded.** Google shut the Imagen `:predict` endpoints down on
 **2026-08-17**, so including them would only produce dead-model errors. The chain is

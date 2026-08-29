@@ -139,7 +139,7 @@ export default function IntelligencePage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">OpenRouter intelligence</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Ask, speak, search - Ghana only</h1>
       <p className="mt-3 text-muted">
-        One server key. OpenRouter accepts at most three fallback slugs per request - the desk walks the full chain in groups of three (Flash / 4.1-mini / 4o-mini, then premium, then :free, then auto). Quota on one provider does not kill the desk.
+        One server key. OpenRouter accepts at most three fallback slugs per request - the desk walks the full chain in groups of three (4.1-mini / Flash / 4o-mini, then Claude / DeepSeek / Mistral, then :free, then auto). The chain is checked against the live OpenRouter model catalogue and retired slugs are skipped automatically, so a provider withdrawing a model never kills the desk.
       </p>
       <div className="mt-5">
         <Disclaimer compact />

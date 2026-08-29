@@ -1,7 +1,7 @@
 import { GHANA_CONTEXT, DISEASES, REGIONS } from "@/lib/ghana";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { ghanaWeather } from "@/lib/weather";
-import { visionAnalyze, type ToolCallSpec } from "@/lib/openrouter";
+import type { ToolCallSpec } from "@/lib/openrouter";
 import { geminiConfigured, geminiVision } from "./gemini";
 import { redactText } from "@/lib/redact";
 import { recordAudit } from "@/lib/store";
@@ -186,7 +186,7 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "vision_read",
     description:
-      "Read and analyse files the user attached: photos, screenshots, PDFs, Word, Excel, CSV. Extracts text, tables, Ghana health fields, and flags identifiers. Use whenever the user attaches something.",
+      "Read and analyse files the user attached: photos, screenshots, PDFs, Word, Excel, CSV - powered by the Gemini vision engine (the GEMINI_API_KEY, independent of the chat model). Extracts text, tables, Ghana health fields, and flags identifiers. Use whenever the user attaches something.",
     parameters: {
       type: "object",
       properties: {
@@ -235,65 +235,38 @@ export const TOOLS: ToolDefinition[] = [
       const skippedNote = skipped.length ? `\n\nNOTE: ${skipped.join(", ")} exceeded the inline size budget and were NOT read.` : "";
 
       /**
-       * Vision runs on Gemini - it is the platform's primary vision engine, and
-       * it reads the file no matter which chat model is pinned in the dropdown.
-       * OpenRouter's vision chain is a pure fallback for when no Google key is
-       * configured at all, and the answer says which provider produced it - a
-       * reader must never have to guess what actually looked at the file.
+       * VISION IS GEMINI-ONLY: it runs on the independent GEMINI_API_KEY from
+       * Google AI Studio, no matter which chat model is pinned in the dropdown.
+       * There is no OpenRouter vision fallback - if the Gemini key is missing
+       * or the read fails, the tool says so loudly and the model is forbidden
+       * from describing a file it never saw.
        */
-      let engine: "gemini" | "openrouter-fallback";
       let text: string;
       let model: string;
-      if (geminiConfigured()) {
-        try {
-          engine = "gemini";
-          const result = await geminiVision({
-            prompt,
-            images,
-            files: docs,
-            extraSystem,
-          });
-          text = result.text;
-          model = result.model;
-        } catch (geminiErr) {
-          const reason = (geminiErr as Error).message || "Gemini vision failed";
-          try {
-            engine = "openrouter-fallback";
-            const result = await visionAnalyze({ prompt, images, files: docs, extraSystem });
-            if (result.degraded) {
-              return fail(
-                `VISION FAILED - the attachment was NOT read.\nGemini: ${reason.slice(0, 180)}\nOpenRouter: ${result.degraded}\n` +
-                  `Tell the user the file could not be opened; do not describe its contents.`,
-              );
-            }
-            text = result.text;
-            model = result.model;
-          } catch (orErr) {
-            return fail(
-              `VISION FAILED - the attachment was NOT read.\nGemini: ${reason.slice(0, 180)}\nOpenRouter: ${(
-                (orErr as Error).message || ""
-              ).slice(0, 180)}\nTell the user the file could not be opened; do not describe its contents.`,
-            );
-          }
-        }
-      } else {
-        engine = "openrouter-fallback";
-        const result = await visionAnalyze({ prompt, images, files: docs, extraSystem });
-        if (result.degraded) {
-          return fail(
-            `VISION FAILED - the attachment was NOT read. ${result.degraded}\n` +
-              `No GEMINI_API_KEY is configured and the OpenRouter vision models also failed.\n` +
-              `Tell the user the file could not be opened; do not describe its contents.`,
-          );
-        }
+      try {
+        const result = await geminiVision({
+          prompt,
+          images,
+          files: docs,
+          extraSystem,
+        });
         text = result.text;
         model = result.model;
+      } catch (geminiErr) {
+        const reason = (geminiErr as Error).message || "Gemini vision failed";
+        return fail(
+          `VISION FAILED - the attachment was NOT read.\nGemini: ${reason.slice(0, 240)}\n` +
+            (geminiConfigured()
+              ? `Tell the user the file could not be opened by the Gemini vision engine; do not describe its contents.`
+              : `No GEMINI_API_KEY is configured. Vision runs ONLY on the Gemini key (from aistudio.google.com/apikey), ` +
+                `never on the OpenRouter key. Tell the user to add GEMINI_API_KEY, and do not describe the file's contents.`),
+        );
       }
 
       recordAudit({ actor: "agent", action: "vision", model, redactions: 0, detail: String(args.question).slice(0, 80) });
       return ok(
-        `VISION (${engine === "gemini" ? "Gemini" : "OpenRouter fallback"} · ${model}):${skippedNote}\n${text}`,
-        [{ type: "status", text: `Vision read via ${model} (${engine})` }],
+        `VISION (Gemini · ${model}):${skippedNote}\n${text}`,
+        [{ type: "status", text: `Vision read via Gemini ${model}` }],
       );
     },
   },

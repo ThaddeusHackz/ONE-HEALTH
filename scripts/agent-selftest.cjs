@@ -459,25 +459,31 @@ function assert(cond, message) {
     return "system/role/inlineData handled; no image modality in code";
   });
 
-  check("vision: runs on Gemini, and says so when it does not", () => {
+  check("vision: runs on Gemini ONLY - the OpenRouter key is never used to see a file", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
-    assert(/if \(geminiConfigured\(\)\)/.test(src), "vision_read is not Gemini-first");
     assert(/geminiVision\(\{/.test(src), "vision_read does not call the Gemini vision engine");
-    assert(
-      /openrouter-fallback/.test(src) && /catch \(geminiErr\)/.test(src),
-      "no explicit, guarded fallback labelling",
-    );
-    assert(/Gemini" : "OpenRouter fallback/.test(src), "the answer does not name its provider");
-    return "Gemini first (geminiVision); OpenRouter only as a guarded, labelled fallback";
+    assert(/catch \(geminiErr\)/.test(src), "a Gemini failure is not caught and handled");
+    assert(!/visionAnalyze/.test(src), "vision_read still routes to OpenRouter vision");
+    assert(/VISION \(Gemini ·/.test(src), "the answer does not name the Gemini engine");
+    assert(/never on the OpenRouter key/.test(src), "the no-key refusal does not explain the contract");
+    const analyze = fs.readFileSync(path.join(ROOT, "lib/analyze.ts"), "utf8");
+    assert(!/visionAnalyze/.test(analyze), "analyzeUploads still has an OpenRouter vision path");
+    assert(/geminiVision\(\{/.test(analyze), "analyzeUploads is not Gemini-driven");
+    const or = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
+    assert(!/visionAnalyze/.test(or), "openrouter.ts still exports a vision function");
+    assert(!/VISION_MODELS/.test(or), "openrouter.ts still ships a vision model chain");
+    return "vision_read + ingest + Vision Lab are Gemini-only; no OpenRouter vision path exists";
   });
 
-  check("research: decompose and synthesis both run on Gemini", () => {
+  check("research: decompose and synthesis run on Gemini ONLY - never OpenRouter", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
     const calls = (src.match(/geminiComplete\(/g) || []).length;
     assert(calls >= 2, `expected decompose + synthesis on Gemini, found ${calls} call(s)`);
     assert(/Synthesised by \$\{engine\}/.test(src), "the brief does not name its engine");
-    assert(/OpenRouter fallback/.test(src), "no labelled fallback");
-    return `${calls} Gemini calls; engine named in the brief`;
+    const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert(!/openrouter/i.test(codeOnly), "deep research still references OpenRouter in code");
+    assert(/engine offline/.test(src), "a missing Gemini key is not an explicit offline state");
+    return `${calls} Gemini calls; engine named; zero OpenRouter references`;
   });
 
   check("models: a pinned model is singular, then auto-resets on exhausted credit", () => {
@@ -497,16 +503,18 @@ function assert(cond, message) {
   });
 
   await checkAsync("vision: a blind answer can never pose as a reading", async () => {
-    const src = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
-    assert(/degraded\??:/.test(src), "ORResult has no degraded flag");
-    assert(/have NOT seen the image or document/i.test(src), "fallback does not tell the model it is blind");
+    // Gemini-only vision: the guarantee is now structural. There is no second
+    // provider that could answer "blind", so the test pins the loud-refusal
+    // contract instead of a degraded flag on a fallback chain.
     const toolsSrc = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
-    assert(/if \(result\.degraded\)/.test(toolsSrc), "vision_read ignores the degraded flag");
-    assert(/VISION FAILED/.test(toolsSrc), "vision_read does not fail loudly");
+    assert(/VISION FAILED - the attachment was NOT read/.test(toolsSrc), "vision_read does not fail loudly");
+    assert(!/visionAnalyze/.test(toolsSrc), "a blind OpenRouter fallback path still exists");
+    const geminiSrc = fs.readFileSync(path.join(ROOT, "lib/agent/gemini.ts"), "utf8");
+    assert(/returned no text/.test(geminiSrc), "an empty Gemini candidate can silently pass as an answer");
     // The real executor, with no attachments, must still refuse outright.
     const out = await call("vision_read", { question: "what does the photo show?" });
     assert(!out.ok, "vision_read answered with nothing attached");
-    return "degraded flag wired end to end; empty-attachment refusal holds";
+    return "no fallback path exists; refusal is loud; empty-attachment refusal holds";
   });
 
   await checkAsync("chat: multi-step turns persist every segment they streamed", async () => {
@@ -925,20 +933,39 @@ function assert(cond, message) {
       "google/gemini-2.5-flash",
       "openai/gpt-4o",
       "google/gemini-2.5-pro",
+      "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4",
+      "deepseek/deepseek-v3.2",
       "deepseek/deepseek-chat",
-      "meta-llama/llama-3.3-70b-instruct:free",
+      "mistralai/mistral-large-2512",
+      "mistralai/mistral-nemo",
+      "meta-llama/llama-3.3-70b-instruct",
+      "google/gemma-4-31b-it:free",
     ];
     for (const slug of expected) assert(models.includes(slug), `${slug} missing from the catalogue`);
     assert(/PINNABLE_MODELS/.test(page), "the dropdown does not render from the catalogue");
-    return `${expected.length} promised slugs present`;
+    // Retired slugs must not ship anywhere in the product.
+    for (const dead of [
+      "anthropic/claude-3.5-sonnet",
+      "mistralai/mistral-large-2411",
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "google/gemma-3-27b-it:free",
+      "qwen/qwen-2.5-72b-instruct:free",
+      "mistralai/mistral-7b-instruct:free",
+      "nousresearch/hermes-3-llama-3.1-405b:free",
+    ]) {
+      const arrayOnly = models.slice(models.indexOf("export const PINNABLE_MODELS"), models.indexOf("export const PINNABLE_SLUGS"));
+      assert(!arrayOnly.includes(dead), `retired slug ${dead} still offered in the dropdown`);
+    }
+    return `${expected.length} live slugs present, retired slugs purged`;
   });
 
-  check("deep research: Gemini synthesis is guarded, with a labelled OpenRouter fallback", () => {
+  check("deep research: a Gemini outage degrades to a raw digest, never another provider", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
     assert(/catch \(geminiErr\)/.test(src), "a Gemini failure would kill the whole research run");
-    assert(/OpenRouter fallback/.test(src), "no labelled fallback engine");
-    return "Gemini first, guarded; research survives an engine outage";
+    assert(/raw digest|raw, unsynthesised/.test(src), "an engine outage is not a labelled, deterministic degrade");
+    assert(!/from "@\/lib\/openrouter"/.test(src), "deep research still imports OpenRouter");
+    return "Gemini-only: outage → labelled raw source digest, zero provider switching";
   });
 
   check("run: attachments ride through vision_read instead of blind inline parts", () => {

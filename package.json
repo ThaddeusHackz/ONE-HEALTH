@@ -14,7 +14,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "selftest:agent": "node scripts/agent-selftest.cjs",
-    "test": "node scripts/agent-selftest.cjs && node scripts/selftest.cjs"
+    "test": "node scripts/agent-selftest.cjs && node scripts/selftest.cjs && node scripts/forensic-scan.cjs",
+    "forensic": "node scripts/forensic-scan.cjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

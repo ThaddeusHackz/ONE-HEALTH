@@ -19,7 +19,16 @@ import type { ChatContent, ChatMessage, ContentPart } from "@/lib/openrouter";
  * out, so no image-generation quota is consumed by a vision read.
  */
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+/**
+ * Base URL override. Production always talks to Google's
+ * generativelanguage.googleapis.com; the forensic self-test points this at a
+ * local mock so quota rotation, thinking-starvation recovery and vision reads
+ * can be exercised without a real key or quota.
+ */
+function geminiBase(): string {
+  const raw = (process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta").trim();
+  return raw.replace(/\/+$/, "");
+}
 
 /** Text + vision models, newest cheap-first. Override with GEMINI_MODELS. */
 export const GEMINI_MODEL_CHAIN = [
@@ -27,7 +36,6 @@ export const GEMINI_MODEL_CHAIN = [
   "gemini-2.5-pro",
   "gemini-2.0-flash",
   "gemini-2.5-flash-lite",
-  "gemini-1.5-pro",
 ];
 
 export interface GeminiResult {
@@ -195,7 +203,7 @@ async function callOnce(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent`, {
+    const res = await fetch(`${geminiBase()}/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(body),

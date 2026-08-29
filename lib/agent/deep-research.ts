@@ -1,4 +1,3 @@
-import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrouter";
 import { geminiComplete, geminiConfigured } from "./gemini";
 import { agentWebSearch, fetchPageText, type AgentSearchHit } from "./web";
 import type { Citation } from "./types";
@@ -18,12 +17,18 @@ const MAX_CITED = 12;
 
 /**
  * Deep Research: decompose → parallel live search → read the best pages →
- * synthesise one sourced brief. Mirrors the ChatGPT/Claude/Copilot research
- * modes but stays on the OpenRouter key with the platform's fallback chain.
+ * synthesise one sourced brief.
+ *
+ * THE ENGINE IS GEMINI-ONLY. Query decomposition and final synthesis both run
+ * on the independent GEMINI_API_KEY from Google AI Studio (the same key that
+ * powers vision). The OpenRouter key is never touched by research: if the
+ * Gemini key is missing or every Gemini model fails, the run degrades to a
+ * deterministic, source-listed digest instead of silently answering on
+ * another provider.
  */
 export async function deepResearch(opts: { question: string; focus: string }): Promise<DeepResearchReport> {
   const question = opts.question.trim();
-  const queries = openRouterConfigured() ? await decompose(question, opts.focus) : defaultQueries(question, opts.focus);
+  const queries = geminiConfigured() ? await decompose(question, opts.focus) : defaultQueries(question, opts.focus);
   const limited = queries.slice(0, MAX_SUBQUERIES);
 
   const searches = await Promise.all(
@@ -77,12 +82,16 @@ export async function deepResearch(opts: { question: string; focus: string }): P
 
   const answers = searches.map((s) => s.answer).filter(Boolean).join("\n");
 
-  if (!openRouterConfigured()) {
+  /**
+   * No Gemini key: live sources are still gathered, but the synthesis step is
+   * OFFLINE BY DESIGN - it must not quietly run on the OpenRouter chat chain.
+   */
+  if (!geminiConfigured()) {
     return {
       question,
       queries: limited,
       citations: cited.slice(0, 10).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
-      markdown: `## Deep research (offline model layer)\n\n**Question:** ${question}\n\nLive sources were retrieved but no model key is configured to synthesise them.\n\n${hits
+      markdown: `## Deep research (engine offline)\n\n**Question:** ${question}\n\nLive sources were retrieved, but deep research synthesis runs ONLY on GEMINI_API_KEY (the independent Gemini key from aistudio.google.com/apikey) and it is not configured. Add it to synthesise a full brief; the sources below are the raw material.\n\n${hits
         .slice(0, 8)
         .map((h, i) => `${i + 1}. [${h.title}](${h.url})\n   ${h.snippet}`)
         .join("\n\n")}`,
@@ -90,9 +99,9 @@ export async function deepResearch(opts: { question: string; focus: string }): P
     };
   }
 
-  const messages: ChatMessage[] = [
+  const messages = [
     {
-      role: "system",
+      role: "system" as const,
       content: `You are the Deep Research engine of ONE HEALTH GHANA.
 Write a structured, decision-useful brief from the supplied live sources only.
 Rules:
@@ -104,7 +113,7 @@ Rules:
 - 350-800 words.`,
     },
     {
-      role: "user",
+      role: "user" as const,
       content: `QUESTION: ${question}${opts.focus ? `\nFOCUS: ${opts.focus}` : ""}\n\nSUB-QUERIES RUN:\n${limited
         .map((q, i) => `${i + 1}. ${q}`)
         .join("\n")}\n\n${answers ? `SEARCH ANSWERS:\n${answers}\n\n` : ""}SOURCES:\n${sourcesBlock || "No sources retrieved."}`,
@@ -112,41 +121,28 @@ Rules:
   ];
 
   /**
-   * Synthesis runs on Gemini (the GEMINI_API_KEY is the deep-research engine).
-   * OpenRouter is the fallback: when no Google key is configured at all OR
-   * Gemini is unreachable - a research run must never die on one engine.
-   * The brief says which engine wrote it.
+   * Synthesis on the Gemini key - the one and only research engine. If every
+   * Gemini model fails, the report degrades to the deterministic digest with
+   * the failure named, rather than silently switching providers.
    */
   let markdown: string;
   let engine: string;
-  if (geminiConfigured()) {
-    try {
-      const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 6144 });
-      markdown = result.text;
-      engine = `Gemini · ${result.model}`;
-    } catch (geminiErr) {
-      const reason = (geminiErr as Error).message || "Gemini failed";
-      try {
-        const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
-        markdown =
-          result.text +
-          `\n\n> Note: the Gemini research engine was unreachable (${reason.slice(
-            0,
-            140,
-          )}); this brief was synthesised on the OpenRouter fallback chain.`;
-        engine = `OpenRouter fallback · ${result.model}`;
-      } catch (orErr) {
-        throw new Error(
-          `Deep research synthesis failed on both engines. Gemini: ${reason.slice(0, 140)} | OpenRouter: ${(
-            (orErr as Error).message || ""
-          ).slice(0, 140)}`,
-        );
-      }
-    }
-  } else {
-    const result = await complete({ messages, temperature: 0.25, maxTokens: 2200 });
+  try {
+    const result = await geminiComplete({ messages, temperature: 0.25, maxTokens: 6144 });
     markdown = result.text;
-    engine = `OpenRouter · ${result.model}`;
+    engine = `Gemini · ${result.model}`;
+  } catch (geminiErr) {
+    const reason = (geminiErr as Error).message || "Gemini failed";
+    markdown =
+      `## Deep research (synthesis engine failed)\n\n**Question:** ${question}\n\n` +
+      `The Gemini research engine (${reason.slice(0, 200)}) could not synthesise this brief, so it is presented ` +
+      `as a raw, unsynthesised source digest. Nothing below is model-written.\n\n` +
+      cited
+        .slice(0, 10)
+        .map((h, i) => `${i + 1}. [${h.title}](${h.url})\n   ${h.snippet}`)
+        .join("\n\n") +
+      (answers ? `\n\n## Raw search answers\n\n${answers}` : "");
+    engine = "Gemini (failed - raw digest)";
   }
 
   return {
@@ -160,29 +156,17 @@ Rules:
 
 async function decompose(question: string, focus: string): Promise<string[]> {
   try {
-    const decomposeMessages: ChatMessage[] = [
-        {
-          role: "system" as const,
-          content:
-            'Break a research question into 3-4 distinct, search-engine-ready sub-queries. Cover different angles (definition/current state, data or evidence, Ghana or local context when relevant, risks or counter-evidence). Return strict JSON: {"queries":["..."]}',
-        },
+    const decomposeMessages = [
+      {
+        role: "system" as const,
+        content:
+          'Break a research question into 3-4 distinct, search-engine-ready sub-queries. Cover different angles (definition/current state, data or evidence, Ghana or local context when relevant, risks or counter-evidence). Return strict JSON: {"queries":["..."]}',
+      },
       { role: "user" as const, content: `${question}${focus ? `\nFocus: ${focus}` : ""}` },
     ];
-    /**
-     * Decomposition prefers Gemini (the configured deep-research engine) and
-     * falls back to OpenRouter; if both fail the deterministic queries below
-     * keep the research run alive.
-     */
-    let result;
-    if (geminiConfigured()) {
-      try {
-        result = await geminiComplete({ json: true, temperature: 0.2, maxTokens: 2048, messages: decomposeMessages });
-      } catch {
-        result = await complete({ json: true, temperature: 0.2, maxTokens: 700, messages: decomposeMessages });
-      }
-    } else {
-      result = await complete({ json: true, temperature: 0.2, maxTokens: 700, messages: decomposeMessages });
-    }
+    // Decomposition also runs on the Gemini key - it is part of the research
+    // engine. If it fails, the deterministic queries below keep the run alive.
+    const result = await geminiComplete({ json: true, temperature: 0.2, maxTokens: 2048, messages: decomposeMessages });
     const parsed = JSON.parse(extractJson(result.text)) as { queries?: string[] };
     const queries = (parsed.queries || []).map((q) => String(q).trim()).filter(Boolean);
     return queries.length ? queries : defaultQueries(question, focus);

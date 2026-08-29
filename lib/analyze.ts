@@ -1,10 +1,19 @@
 import { extractFile, type ExtractedFile } from "./files";
-import { openRouterConfigured, visionAnalyze } from "./openrouter";
 import { geminiConfigured, geminiVision } from "./agent/gemini";
 import { redactText } from "./redact";
 import type { DocumentRow } from "./records";
 import { logActivity, recordAudit, saveDB, uid } from "./store";
 
+/**
+ * Document + image reading for the Vision Lab, One Health ingest and every
+ * other surface that must SEE a file.
+ *
+ * VISION IS GEMINI-ONLY. It runs on the independent GEMINI_API_KEY from Google
+ * AI Studio (aistudio.google.com/apikey) - never on the OpenRouter key. There
+ * is deliberately NO OpenRouter vision fallback: the platform's contract is
+ * that one key (the Gemini key) is the vision engine, so a failure says so
+ * plainly instead of silently switching providers.
+ */
 export async function analyzeUploads(opts: {
   files: File[];
   prompt?: string;
@@ -48,16 +57,9 @@ ${textBlock || "(no text layer - rely on vision / file parts)"}`;
   let analysis = "";
   let model = "local-extract";
 
-  /**
-   * Vision runs on the GEMINI key first - it is the platform's primary vision
-   * engine for every surface (Vision Lab, agent vision_read, One Health
-   * ingest). OpenRouter's vision chain is the fallback when no Google key is
-   * configured or Gemini is unreachable, so a document read never dies on one
-   * engine.
-   */
   const extraSystem =
     "Ghana Health Service document intelligence. Extract structured surveillance fields. Never diagnose an individual. Never claim certainty.";
-  let geminiFailed = "";
+
   if (geminiConfigured()) {
     try {
       const r = await geminiVision({
@@ -69,30 +71,19 @@ ${textBlock || "(no text layer - rely on vision / file parts)"}`;
       analysis = r.text;
       model = `gemini:${r.model}`;
     } catch (err) {
-      geminiFailed = (err as Error).message || "Gemini vision failed";
-    }
-  }
-
-  if (!analysis && openRouterConfigured()) {
-    try {
-      const r = await visionAnalyze({
-        prompt,
-        images: images.slice(0, 6),
-        files: pdfs.slice(0, 3),
-        extraSystem,
-      });
-      analysis = r.text;
-      model = r.model;
-    } catch (err) {
-      analysis = `Model read failed: ${(err as Error).message}${
-        geminiFailed ? `\n(Gemini first tried: ${geminiFailed.slice(0, 160)})` : ""
-      }\n\nLocal extracts still stored.\n\n${textBlock.slice(0, 3000)}`;
+      analysis =
+        `Gemini vision read failed: ${(err as Error).message}\n\n` +
+        `The file(s) were NOT read by any model. Local extracts (text layer only) are still stored below.\n\n` +
+        `${textBlock.slice(0, 3000) || "(no local text layer - images and scans need the Gemini engine)"}`;
       model = "extract-fallback";
     }
-  } else if (!analysis) {
-    analysis = `No vision key loaded. Local extracts:\n\n${
-      textBlock.slice(0, 4000) || "Images queued - connect GEMINI_API_KEY to read them."
-    }`;
+  } else {
+    analysis =
+      `No GEMINI_API_KEY is configured, so the vision engine is off.\n\n` +
+      `Set GEMINI_API_KEY (an independent key from https://aistudio.google.com/apikey) to read images, PDFs and scans. ` +
+      `Vision and document reading run ONLY on the Gemini key - the OpenRouter key is never used to see files.\n\n` +
+      `Local extracts stored:\n\n${textBlock.slice(0, 4000) || "(none - this file type has no local text layer)"}`;
+    model = "no-vision-key";
   }
 
   const saved: DocumentRow[] = [];

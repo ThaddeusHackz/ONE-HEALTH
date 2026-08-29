@@ -1,4 +1,4 @@
-import { unzipSync } from "fflate";
+import { unzipSync, unzlibSync } from "fflate";
 
 export interface ExtractedFile {
   name: string;
@@ -128,20 +128,72 @@ function extractXlsx(buf: Buffer): string {
   }
 }
 
+/**
+ * PDF text extraction, done properly.
+ *
+ * The 2025 extractor matched `stream\r\n` INSIDE the word "endstream", so it
+ * read the binary object table BETWEEN streams instead of the streams
+ * themselves - on the Phase 2 workbook it returned 40,000 characters of
+ * mojibake that then poisoned every model prompt. This version:
+ *
+ *   1. matches stream boundaries that are NOT part of "endstream",
+ *   2. inflates FlateDecode streams (zlib, via fflate's unzlibSync) - the
+ *      standard for any PDF produced after ~2003,
+ *   3. decodes the real text-show operators: (str) Tj, [(a) -120 (b)] TJ and
+ *      <hex> Tj, with PDF string escapes (octal, \\n, \\(, \\\) resolved.
+ *
+ * It is a text LAYER reader, not a layout engine - scanned PDFs with no text
+ * layer still need the Gemini vision engine, which is exactly what the
+ * ingest/vision pipeline does with the inlineData part.
+ */
 function extractPdfText(buf: Buffer): string {
-  const raw = buf.toString("latin1");
-  const chunks: string[] = [];
-  const re = /stream[\r\n]+([\s\S]*?)endstream/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw))) {
-    const inner = m[1];
-    const textBits = [...inner.matchAll(/\((?:\\.|[^\\)]){2,}\)/g)].map((x) =>
-      x[0].slice(1, -1).replace(/\\n/g, "\n").replace(/\\[()\\]/g, ""),
-    );
-    if (textBits.length) chunks.push(textBits.join(" "));
+  try {
+    const raw = buf.toString("latin1");
+    const streams = [...raw.matchAll(/(?<!end)stream\r?\n([\s\S]*?)endstream/g)];
+
+    const decoded: string[] = [];
+    for (const m of streams) {
+      const dictHead = raw.slice(Math.max(0, m.index - 500), m.index);
+      const body = m[1];
+      if (/FlateDecode/.test(dictHead)) {
+        try {
+          // Trim the EOL that PDF writers place before "endstream"; fflate is
+          // strict about trailing bytes where Node's zlib is not.
+          const bytes = Buffer.from(body.replace(/[\r\n\s]+$/, ""), "latin1");
+          const inflated = unzlibSync(new Uint8Array(bytes));
+          decoded.push(Buffer.from(inflated).toString("latin1"));
+        } catch {
+          // Corrupt or truncated stream - skip it, the next one may be fine.
+        }
+      } else {
+        decoded.push(body);
+      }
+    }
+
+    const all = decoded.join("\n");
+    const pieces: string[] = [];
+
+    // (string) Tj - show text
+    for (const m of all.matchAll(/\(((?:\\.|[^\\()])*)\)\s*Tj/g)) pieces.push(m[1]);
+    // [ (a) -120 (b) 34 (c) ] TJ - show text with kerning offsets
+    for (const m of all.matchAll(/\[((?:[^\]\\]|\\.)*)\]\s*TJ/g)) {
+      for (const s of m[1].matchAll(/\(((?:\\.|[^\\()])*)\)/g)) pieces.push(s[1]);
+    }
+    // <hex> Tj - hex-encoded strings (usually CID fonts; kept as raw bytes)
+    for (const m of all.matchAll(/<([0-9A-Fa-f\s]+)>\s*Tj/g)) {
+      const hex = m[1].replace(/\s+/g, "");
+      if (hex.length % 2 === 0 && hex.length <= 512) pieces.push(Buffer.from(hex, "hex").toString("latin1"));
+    }
+
+    let text = pieces.join("");
+    text = text
+      .replace(/\\([0-7]{1,3})/g, (_, o) => String.fromCharCode(parseInt(o, 8)))
+      .replace(/\\([nrtbf])/g, (_, c: string) => ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f" }[c] ?? c))
+      .replace(/\\([()\\])/g, "$1");
+    // Drop control bytes that survive CID fonts; keep whitespace structure.
+    text = text.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\u024f]/g, " ").replace(/[ ]{2,}/g, " ").trim();
+    return text.slice(0, 40000);
+  } catch {
+    return "";
   }
-  const tj = [...raw.matchAll(/\((?:\\.|[^\\)])+\)\s*Tj/g)].map((x) => x[0].replace(/\s*Tj$/, "").slice(1, -1));
-  if (tj.length) chunks.push(tj.join(" "));
-  const cleaned = chunks.join("\n").replace(/[^\x09\x0a\x0d\x20-\x7e]/g, " ").replace(/[ ]{2,}/g, " ").trim();
-  return cleaned.slice(0, 40000);
 }
