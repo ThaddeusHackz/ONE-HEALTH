@@ -14,7 +14,13 @@ import {
 import { GEMINI_IMAGE_MODEL_CHAIN, listGeminiModels } from "@/lib/agent/media";
 import { geminiPing } from "@/lib/agent/gemini";
 import { geminiKey } from "@/lib/env";
-import { lastOpenRouterError, MAX_MODELS_PER_REQUEST } from "@/lib/openrouter";
+import {
+  CHAT_MODELS,
+  FREE_MODELS,
+  lastOpenRouterError,
+  MAX_MODELS_PER_REQUEST,
+  modelCatalogueStatus,
+} from "@/lib/openrouter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -173,7 +179,7 @@ export async function GET() {
           id: "gemini",
           ok: false,
           status: 0,
-          detail: "missing GEMINI_API_KEY - vision, deep research and image generation all need it",
+          detail: "missing GEMINI_API_KEY - the vision engine (all document/photo reads), deep research and image generation run ONLY on this key",
           masked: "not set",
         };
       }
@@ -239,6 +245,31 @@ export async function GET() {
         status: res.status,
         detail: res.ok ? "OpenAI key valid - Whisper available" : "OpenAI key rejected",
         masked: maskKey(key),
+      };
+    }),
+  );
+
+  checks.push(
+    await probe("model-chain", "-", async () => {
+      const chain = [...CHAT_MODELS, ...FREE_MODELS];
+      const status = await modelCatalogueStatus(chain);
+      if (!status.reachable) {
+        return {
+          id: "model-chain",
+          ok: false,
+          status: "unreachable",
+          detail: `OpenRouter's public model catalogue could not be reached - the ${chain.length}-slug chain runs unfiltered (each group still recovers from retired slugs at request time).`,
+          masked: "-",
+        };
+      }
+      return {
+        id: "model-chain",
+        ok: status.live.length > 0,
+        status: 200,
+        detail:
+          `${status.live.length}/${chain.length} fallback-chain slugs live on the catalogue (${status.total} models total)` +
+          (status.dead.length ? ` · retired (auto-skipped): ${status.dead.join(", ")}` : ""),
+        masked: "-",
       };
     }),
   );

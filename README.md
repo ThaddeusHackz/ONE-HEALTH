@@ -20,14 +20,20 @@ This repository turns the Phase 2 modelling workbook into a working system:
 
 ```bash
 cp .env.example .env.local
-# put OPENROUTER_API_KEY in .env.local - never commit it
+# put OPENROUTER_API_KEY (chat) and GEMINI_API_KEY (vision + research) in .env.local - never commit them
 npm install
 npm run dev
 ```
 
 Open http://localhost:3000
 
-Without a key the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning needs OpenRouter; vision, deep research and image generation need GEMINI_API_KEY.
+Full forensic scan (typecheck + lint + the real engine code against mock providers - no keys needed):
+
+```bash
+npm run forensic
+```
+
+Without keys the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning (chat) needs OPENROUTER_API_KEY; vision, deep research and image generation need the independent GEMINI_API_KEY from Google AI Studio - the two never mix.
 
 ### Optional keys that light up more of the AI Agent
 
@@ -75,7 +81,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Required for live AI:
 
 | Variable | Purpose | Where to get it |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Chat, vision, fallback chain, optional Whisper | https://openrouter.ai/keys |
+| `OPENROUTER_API_KEY` | Chat reasoning + the Auto fallback chain (never vision or research) | https://openrouter.ai/keys |
+| `GEMINI_API_KEY` | **Vision on every file/photo/PDF, deep research, image generation** - an independent key from Google AI Studio | https://aistudio.google.com/apikey |
 | `TAVILY_API_KEY` | Cited web search | https://tavily.com |
 | `ELEVENLABS_API_KEY` | Spoken briefings | https://elevenlabs.io |
 | `OPENWEATHER_API_KEY` | Optional climate context | https://openweathermap.org |

@@ -1,6 +1,63 @@
 # Inventory - everything built on this branch
 
-This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a03499-one-health-ai`.
+This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a04e5b-one-health-ai`.
+
+## 2026-08-29 (pass 6) Full forensic scan - Gemini-only vision & research, model-chain rot, PDF extraction, dev bootstrap
+
+### Vision + deep research run ONLY on the independent Gemini key
+- [x] `visionAnalyze` / `VISION_MODELS` deleted from `lib/openrouter.ts` - the
+      product physically cannot see files through OpenRouter any more
+- [x] `vision_read` (agent), `analyzeUploads` (Vision Lab + ingest) and the
+      deep-research engine (decompose + synthesis) are Gemini-only; outages
+      fail LOUDLY instead of silently switching providers; a missing key
+      explains the GEMINI_API_KEY contract
+- [x] `/api/health` advertises `vision` / `visionEngine` / `deepResearch`;
+      docs, README and .env.example state the contract
+- [x] forensic scan asserts ZERO OpenRouter calls during vision + research runs
+
+### "Claude/Mistral/DeepSeek don't work" - root cause + permanent fix
+- dead slugs verified against the live OpenRouter catalogue (2026-08-29):
+  anthropic/claude-3.5-sonnet, mistralai/mistral-large-2411 and the entire
+  legacy :free tier all have zero endpoints - and a dead slug poisons its
+  whole 3-model fallback group
+- [x] CHAT_MODELS / FREE_MODELS / PINNABLE dropdown refreshed: every slug
+      re-verified live (claude-sonnet-4.6, deepseek-v3.2, mistral-nemo,
+      gemma-4-31b-it:free, nemotron-3 free tier, ...)
+- [x] runtime self-healing: the chain is filtered against OpenRouter's public
+      /models catalogue (10-min cache, degrades gracefully when unreachable)
+- [x] dead-slug group recovery: "No endpoints found" errors are dissected, the
+      retired slug dropped, the group retried, the slug blacklisted for the
+      process - in both the normal and the streaming path
+- [x] /api/diagnostics `model-chain` check reports verified-live vs
+      catalogue-unreachable honestly
+
+### PDF / document extraction rewritten
+- the old extractor matched `stream\r\n` inside the word `endstream`, so it
+  read binary object-table bytes BETWEEN streams: the real Phase 2 workbook
+  produced 40,000 chars of mojibake that poisoned every downstream prompt
+- [x] proper stream boundaries + FlateDecode inflation (fflate `unzlibSync`) +
+  Tj/TJ/<hex> operator decoding with PDF escape handling
+- [x] same workbook now extracts 38,742 chars of clean text, zero control
+      bytes; scanned PDFs still hand off to the Gemini vision engine
+
+### `npm run dev` was totally broken (every route 500)
+- [x] instrumentation.ts imported lib/store (fs) at module scope; the Edge
+      compile of instrumentation failed and took every route down. Split into
+      instrumentation.ts (runtime guard) + instrumentation-node.ts (Node-only)
+- [x] pg's optional pg-native require chain broke the dev webpack build even
+      with serverExternalPackages - `pg-native` is now aliased to false
+- [x] data/db.json writes are atomic (temp file + rename) - kills the
+      "Unexpected end of JSON input" read/write race seen on /api/nowcast
+
+### Testing infrastructure
+- [x] new `npm run forensic`: typecheck + lint + source contracts + the REAL
+      compiled lib/ code driven against local mock OpenRouter/Gemini HTTP
+      servers - 34 checks incl. chain walking, dead-slug recovery, catalogue
+      filtering, credit fallback, pinning, quota rotation, thinking-starvation
+      recovery, inlineData delivery, the Gemini-only contract, and clean PDF
+      extraction on the real workbook (no external network or keys needed)
+- [x] `npm test` now runs agent-selftest + HTTP selftest + forensic scan
+- [x] OPENROUTER_API_BASE / GEMINI_API_BASE env overrides power the mocks
 
 ## 2026-08-25 (pass 5) Forensic sweep - request-body caps everywhere, postMessage + CSS hardening
 

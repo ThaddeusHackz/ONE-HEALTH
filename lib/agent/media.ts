@@ -104,7 +104,11 @@ export const GEMINI_IMAGE_MODEL_CHAIN = [
   "gemini-2.5-flash-image-preview",
 ];
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+/** Same override hook as gemini.ts - lets the forensic mock stand in for Google. */
+function geminiBase(): string {
+  const raw = (process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta").trim();
+  return raw.replace(/\/+$/, "");
+}
 
 export interface GeneratedImage {
   dataUrl: string;
@@ -212,7 +216,7 @@ export async function generateImage(opts: {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 120000);
-        const res = await fetch(`${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent`, {
+        const res = await fetch(`${geminiBase()}/models/${encodeURIComponent(model)}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify(body),
@@ -270,7 +274,7 @@ export async function listGeminiModels(): Promise<{ ok: boolean; models: string[
   const key = geminiKey();
   if (!key) return { ok: false, models: [], error: "GEMINI_API_KEY not set" };
   try {
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+    const res = await fetch(`${geminiBase()}/models?pageSize=200`, {
       headers: { "x-goog-api-key": key },
     });
     const json = (await res.json()) as {

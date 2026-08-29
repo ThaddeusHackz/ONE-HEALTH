@@ -60,6 +60,10 @@ export function GET() {
       stockImages: Boolean(unsplashKey()),
       imageGen: Boolean(geminiKey()),
       imageGenEngine: geminiKey() ? "gemini" : "not configured",
+      /** Vision + deep research run ONLY on the independent Gemini key. */
+      vision: Boolean(geminiKey()),
+      visionEngine: geminiKey() ? "gemini" : "not configured",
+      deepResearch: Boolean(geminiKey()),
       whisper: Boolean(whisperKey()),
       agentTools: TOOLS.length,
       freeModelFallback: true,
