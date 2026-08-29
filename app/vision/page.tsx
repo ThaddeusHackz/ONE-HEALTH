@@ -74,7 +74,7 @@ export default function VisionPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">Vision lab</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Any file Ghana Health Service can hold</h1>
       <p className="mt-3 max-w-3xl text-muted">
-        PDF circulars, Word memos, Excel line lists, CSV extracts, lab photos, IDSR scans. Text layers (including compressed PDF text) are extracted locally; images and PDFs are read by the Gemini vision engine on the independent GEMINI_API_KEY from Google AI Studio - never on the OpenRouter key. Every run is stored in the site database for the admin desk.
+        PDF circulars, Word memos, Excel line lists, CSV extracts, lab photos, IDSR scans. Text layers (including compressed PDF text) are extracted locally; images and PDFs are read by the Gemini vision engine on the GEMINI_API_KEY from Google AI Studio - the single key behind every AI feature here. Every run is stored in the site database for the admin desk.
       </p>
       <div className="mt-5">
         <Disclaimer />

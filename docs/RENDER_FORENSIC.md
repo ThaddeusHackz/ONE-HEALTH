@@ -1,5 +1,12 @@
 # Render.com forensic - current repo (2026-08-19)
 
+> **SUPERSEDED — historical record.** This document describes the platform when it
+> still ran on OpenRouter. On 2026-08-29 the product was migrated to a **single
+> Gemini engine** (`lib/llm.ts`, one `GEMINI_API_KEY`); no OpenRouter key, slug,
+> env var or code path remains. Kept unedited as an audit trail. For the current
+> architecture see [`GEMINI_MIGRATION_2026-08-29.md`](GEMINI_MIGRATION_2026-08-29.md)
+> and [`AGENT_FORENSIC.md`](AGENT_FORENSIC.md).
+
 Live host probed: `https://one-health-ghana.onrender.com`.
 
 **Boot: YES.** Health 200. All public pages 200. TypeScript clean.

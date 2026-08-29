@@ -12,15 +12,15 @@ contracts the ONE HEALTH AI Agent is built against.
 * **Not examined:** the client-side JavaScript bundles of the four sites. Two reasons,
   both verifiable:
   1. The build sandbox for this repository has **no outbound network** — every
-     `fetch` from Node to duckduckgo.com, openrouter.ai, api.tavily.com,
+     `fetch` from Node to duckduckgo.com, generativelanguage.googleapis.com, api.tavily.com,
      api.unsplash.com and cdn.jsdelivr.net fails with `fetch failed`, and `curl` to the
      four sites returns HTTP 000. So no live probe of any external service was possible
      here.
   2. Those front ends are authenticated single-page apps; their DOM is produced at
      runtime from minified bundles, which is not a source of reliable component
      inventory even with network access.
-* **Consequence for this repo:** every live-API code path (OpenRouter chat/stream/tools,
-  OpenRouter images, Tavily, Unsplash, OpenAI Whisper, ElevenLabs) is written against the
+* **Consequence for this repo:** every live-API code path (Gemini chat/stream/tools,
+  Gemini vision/images/speech, Tavily, Unsplash, ElevenLabs) is written against the
   documented contract and is covered by graceful-degradation tests, but **was not executed
   against the real service in this session**. It must be verified on Render with keys set
   — `GET /api/diagnostics` is the probe for that.
@@ -41,7 +41,7 @@ model selector, sidebar with Projects and Settings, conversation list, inline ci
 | Code Interpreter (Python sandbox) | `sandbox_exec` with Pyodide in an opaque-origin iframe |
 | Image generation | `image_generate` via the Gemini image models |
 | Image input / screenshot reading | attachments + `vision_read` |
-| Advanced Voice | MediaRecorder → Whisper (3-tier) in, ElevenLabs/OpenRouter/browser out |
+| Advanced Voice | MediaRecorder → Gemini speech-to-text in, ElevenLabs/Gemini TTS/browser out |
 | Memory across conversations | `lib/agent/memory.ts` + auto-distillation |
 | Projects / conversation persistence | server-side conversation store + history rail |
 | Custom GPTs / personas | five modes (Chat, Deep Research, Builder, Vision, One Health) + tool toggles |
@@ -68,7 +68,7 @@ model selector, sidebar with Projects and Settings, conversation list, inline ci
 |---|---|
 | Quick Response vs Think Deeper | mode chips + "Think deeper" toggle |
 | Copilot Vision | attachments + `vision_read` |
-| Designer / image generation, model choice | `image_generate` with an overridable model chain (`OPENROUTER_IMAGE_MODELS`) |
+| Designer / image generation, model choice | `image_generate` with an overridable model chain (`GEMINI_IMAGE_MODELS`) |
 | Deep Research with hover-to-source | `deep_research` + numbered citation chips |
 | Notebooks / Pages (interactive documents) | `create_file` HTML artefacts run in the sandbox |
 | Copilot Voice | Voice in/out |
@@ -97,30 +97,42 @@ panel on the right shows the files it created; models emit structured tool calls
 
 These are the shapes the code is written to.
 
-### OpenRouter
+### Gemini — the ONE engine (`GEMINI_API_KEY`, Google AI Studio)
+
+Base `https://generativelanguage.googleapis.com/v1beta`, auth header `x-goog-api-key`.
+Every AI capability on this platform is one of these calls. There is no second provider.
+
 | Job | Endpoint | Contract |
 |---|---|---|
-| Chat / tools / streaming | `POST /api/v1/chat/completions` | OpenAI-compatible; `tools` + `tool_choice`; SSE `data:` frames; `delta.tool_calls[].function.arguments` streamed as fragments |
-| Model routing | `models: [...]` | **at most 3 slugs per request**, otherwise HTTP 400 — hence the group-of-three walker already in `lib/openrouter.ts` |
-| Image generation | `POST /api/v1/images` | `{model, prompt, aspect_ratio?, resolution?, input_references?}` → `{data:[{b64_json}], usage:{cost}}`; discovery at `GET /api/v1/images/models` |
-| Image via chat | `POST /api/v1/chat/completions` | `modalities:["image","text"]`, images returned in `message.images[]` — used as the second fallback |
-| Vision | `POST /api/v1/chat/completions` | `image_url` content part (public URL **or** base64 data URL); PDFs as `file` parts |
-| TTS | `POST /api/v1/audio/speech` | text in, MP3/PCM bytes out |
-| STT | `POST /api/v1/audio/transcriptions` | multipart audio in, `{text}` out |
-| Image generation billing | — | no image model carries a `:free` suffix; generation draws on credit balance |
+| Chat / reasoning | `POST /models/{model}:generateContent` | `{contents:[{role,parts}], systemInstruction, generationConfig}`; **one model per request** — the slug is in the URL, so the chain is walked one at a time |
+| Streaming | `POST /models/{model}:streamGenerateContent?alt=sse` | SSE `data:` frames carrying `candidates[0].content.parts[]` |
+| Tool calling | same, plus `tools:[{functionDeclarations}]` + `toolConfig.functionCallingConfig.mode:"AUTO"` | calls come back as `functionCall` parts; results go back as `functionResponse` parts on a user turn (Gemini has no tool role and no call ids) |
+| Schema dialect | `functionDeclarations[].parameters` | OpenAPI-ish: `$schema`, `additionalProperties`, `exclusiveMinimum`, `oneOf` … are **rejected** — `sanitizeSchema()` in `lib/llm.ts` strips them |
+| Vision | same endpoint | `inlineData:{mimeType,data}` parts; images **and** PDFs; 20 MB inline request cap |
+| Catalogue | `GET /models` | what THIS key may call; used to filter retired slugs before a request goes out |
+| Image generation | `POST /models/{model}:generateContent` | `generationConfig.responseModalities:["TEXT","IMAGE"]`; image at `candidates[0].content.parts[].inlineData.data` (REST may use `inline_data`) |
+| TTS | `POST /models/{model}:generateContent` | `responseModalities:["AUDIO"]` + `speechConfig.voiceConfig.prebuiltVoiceConfig`; returns **raw s16le PCM @24 kHz**, so `/api/tts` prepends a WAV header |
+| STT | `POST /models/{model}:generateContent` | audio as an `inlineData` part + a "transcribe verbatim" prompt |
+| Thinking models | `generationConfig.thinkingConfig` | 2.5+ spend the output budget on hidden reasoning first — with a small `maxOutputTokens` they return `MAX_TOKENS` and **no text**, which looks exactly like a dead key. Thinking is disabled on attempt 1; attempt 2 drops `thinkingConfig` and doubles the budget |
+| Hidden reasoning | response parts flagged `thought:true` | never returned as the answer; routed to the reasoning channel |
 
-Implemented in `lib/agent/media.ts`, `lib/openrouter.ts`, `app/api/tts/route.ts`,
-`app/api/transcribe/route.ts`.
+Implemented in `lib/llm.ts` (the engine), `lib/agent/gemini.ts` (vision + ping),
+`lib/agent/media.ts` (images), `app/api/tts/route.ts`, `app/api/transcribe/route.ts`.
 
-### Gemini (the vision + research + image engine — the independent GEMINI_API_KEY)
-`POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`,
-auth header `x-goog-api-key`. Three jobs, and ONLY these three:
+**Error taxonomy** (`lib/llm.ts`): `GeminiRouterError` carries `status`, `model` and a
+`kind` of `auth` (400/401/403 "API key not valid" → stop the chain at once, a retry can
+only waste time), `quota` (429 → next model, then the free-tier models), `dead_model`
+(404 → cache the slug dead for the process), `tool_rejected` (retry the same model with
+no tools), `transient` (5xx/network → next model) or `empty` (a candidate with no text —
+never allowed to pass as an answer).
+
+The three task layers built on the engine:
 
 1. **Vision** — photos, PDFs and documents as `inlineData` parts
-   (`lib/agent/gemini.ts` `geminiVision`, used by `vision_read`, the Vision Lab
-   and One Health ingest). Thinking is disabled on the first attempt so a read
-   can never starve its output budget; quota rotates down the model chain; a
-   bad key is a named auth error. **No OpenRouter fallback exists anywhere.**
+   (`geminiVision`, used by `vision_read`, the Vision Lab and One Health ingest).
+   Thinking is disabled on the first attempt so a read can never starve its
+   output budget; quota rotates down the model chain; a bad key is a named auth
+   error. **A file is never described unless a model actually saw it.**
 2. **Deep research** — query decomposition + sourced synthesis
    (`lib/agent/deep-research.ts`), `responseMimeType: application/json` for the
    decompose step. No key → offline digest; outage → labelled raw digest.
@@ -159,10 +171,12 @@ header `Authorization: Client-ID <key>`, `Accept-Version: v1`. Response:
 `{results:[{urls:{raw,regular,small}, alt_description, links:{html}, user:{name}}]}`.
 Implemented in `lib/agent/media.ts`, with a Tavily-image fallback when the key is absent.
 
-### OpenAI Whisper
-`POST https://api.openai.com/v1/audio/transcriptions`, multipart `model` + `file`.
-Models tried: `gpt-4o-mini-transcribe`, then `whisper-1`. An `sk-or-…` key is never sent
-to `api.openai.com` — `whisperKey()` filters it (`lib/env.ts`).
+### Speech-to-text
+There is no separate transcription vendor. `/api/transcribe` sends the recorded audio to
+Gemini as an `inlineData` part with a verbatim-transcription instruction, on the same
+`GEMINI_API_KEY`. Without a key the route returns guidance to use the browser's Web
+Speech dictation instead of failing. Audio above ~18 MB is refused up front rather than
+sent into Gemini's ~20 MB inline request cap.
 
 ---
 
@@ -175,9 +189,11 @@ to `api.openai.com` — `whisperKey()` filters it (`lib/env.ts`).
    the cost of network access from inside the sandbox.
 2. **Closed tool surface, no MCP.** Every capability is a declared, auditable tool in
    `lib/agent/tools.ts`. Nothing can be added at runtime by a prompt.
-3. **Three-slug chunking everywhere.** The existing forensic finding (OpenRouter rejects
-   more than three `models` entries) is reused by the streaming path, so tool calling
-   inherits the same resilience.
+3. **One key, one engine.** Chat, tools, vision, research, images and speech all run on
+   `GEMINI_API_KEY`. One credential to set, one quota to watch, one place to look when
+   something stops answering — and no possibility of the "which key was that?" class of
+   bug. The cost is stated plainly: an exhausted quota takes every AI surface down at
+   once, and `/api/diagnostics` reports exactly that.
 4. **Streaming is mandatory for an agent UI.** `completeStream` exists because a
    multi-step turn can take a minute; a blocking request would look broken.
 5. **Deterministic maths is a tool.** `compute` is a hand-written parser, not `eval`,

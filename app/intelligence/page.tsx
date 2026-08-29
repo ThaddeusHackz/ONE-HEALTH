@@ -42,11 +42,11 @@ export default function IntelligencePage() {
     fetch("/api/health")
       .then((r) => r.json())
       .then((j) => {
-        const on = j.capabilities?.openrouter;
+        const on = j.capabilities?.gemini;
         setKeyNote(
           on
-            ? `OpenRouter key loaded (${j.capabilities.openrouterKey}). Fallback chain is live.`
-            : "OPENROUTER_API_KEY is missing on the server. Chat will use the Ghana offline briefing until Render has the key.",
+            ? `Gemini key loaded (${j.capabilities.geminiKey}). The Gemini fallback chain is live.`
+            : "GEMINI_API_KEY is missing on the server. Chat will use the Ghana offline briefing until Render has the key.",
         );
       })
       .catch(() => setKeyNote("Could not read /api/health."));
@@ -136,10 +136,10 @@ export default function IntelligencePage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 md:px-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">OpenRouter intelligence</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">Gemini intelligence</p>
       <h1 className="font-display mt-2 text-4xl tracking-tight">Ask, speak, search - Ghana only</h1>
       <p className="mt-3 text-muted">
-        One server key. OpenRouter accepts at most three fallback slugs per request - the desk walks the full chain in groups of three (4.1-mini / Flash / 4o-mini, then Claude / DeepSeek / Mistral, then :free, then auto). The chain is checked against the live OpenRouter model catalogue and retired slugs are skipped automatically, so a provider withdrawing a model never kills the desk.
+        One server key: GEMINI_API_KEY. The desk walks the Gemini fallback chain one model at a time (2.5 Flash → 2.5 Pro → 2.0 Flash → Flash-Lite → Gemma), and the chain is checked against Google&rsquo;s live model catalogue for that key, so a retired slug is skipped automatically and never kills the desk.
       </p>
       <div className="mt-5">
         <Disclaimer compact />

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrouter";
+import { complete, geminiConfigured, type ChatMessage } from "@/lib/llm";
 import { formatHits, webSearch } from "@/lib/search";
 import { GHANA_CONTEXT } from "@/lib/ghana";
 import { runForecast } from "@/lib/forecast";
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const last = [...history].reverse().find((m) => m.role === "user")?.content || "";
   const redactions = (body.messages || []).reduce((n, m) => n + redactText(m.content).count, 0);
 
-  if (!openRouterConfigured()) {
+  if (!geminiConfigured()) {
     const text = offlineAnswer(last);
     persistChat([...history, { role: "assistant", content: text }], "offline-ghana-knowledge", redactions);
     return NextResponse.json({
@@ -112,7 +112,7 @@ Malaria remains Ghana’s highest-burden notifiable disease. Transmission typica
 
 **What it cannot do:** declare an outbreak, or produce an error-free future count. A forecast is a probability statement.
 
-Add \`OPENROUTER_API_KEY\` on the server to unlock live multi-model reasoning.`;
+Add \`GEMINI_API_KEY\` on the server to unlock live Gemini reasoning.`;
   }
   if (s.includes("cholera")) {
     return `**Cholera - Ghana (offline briefing)**
@@ -123,7 +123,7 @@ An alert (z > 2) is a prompt to check reporting backlogs, water points, and stoo
   }
   return `**ONE HEALTH GHANA - offline mode**
 
-Live multi-model intelligence needs a server-side \`OPENROUTER_API_KEY\`. Statistical forecasts, outbreak z-scores, and the Ghana knowledge layer still run locally.
+Live Gemini intelligence needs a server-side \`GEMINI_API_KEY\`. Statistical forecasts, outbreak z-scores, and the Ghana knowledge layer still run locally.
 
 Ask about malaria, cholera, CSM, measles, yellow fever, mpox, Lassa, avian influenza, or a specific region. Do not paste patient names or identifiers.`;
 }

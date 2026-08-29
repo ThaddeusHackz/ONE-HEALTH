@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runForecast } from "@/lib/forecast";
 import { reportingNowcast } from "@/lib/nowcast";
-import { openRouterReview } from "@/lib/or-review";
+import { aiReview } from "@/lib/ai-review";
 import { findOfficialSeries } from "@/lib/store";
 import { districtById } from "@/lib/districts";
 
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   const nowcast = reportingNowcast(bundle.series.map((s) => ({ date: s.date, cases: s.cases })));
   const review = url.searchParams.get("ai") === "0"
     ? { text: "", model: "skipped" }
-    : await openRouterReview("nowcast", {
+    : await aiReview("nowcast", {
       disease: bundle.disease.name,
       region: bundle.region.name,
       source: bundle.diagnostics.source,

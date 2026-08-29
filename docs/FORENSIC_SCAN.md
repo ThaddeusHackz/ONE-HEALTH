@@ -1,5 +1,12 @@
 # Forensic scan - Phase 2 workbook, companion code, OpenRouter brief
 
+> **SUPERSEDED — historical record.** This document describes the platform when it
+> still ran on OpenRouter. On 2026-08-29 the product was migrated to a **single
+> Gemini engine** (`lib/llm.ts`, one `GEMINI_API_KEY`); no OpenRouter key, slug,
+> env var or code path remains. Kept unedited as an audit trail. For the current
+> architecture see [`GEMINI_MIGRATION_2026-08-29.md`](GEMINI_MIGRATION_2026-08-29.md)
+> and [`AGENT_FORENSIC.md`](AGENT_FORENSIC.md).
+
 Date: 2026-08-19  
 Scope: files supplied on `main` (`One Health Pandemic Forecasting Workbook - Phase 2 (1)(1).pdf`, `code.txt`, `OPENROUTER_FORENSIC_FALLBACK_REPORT.txt`) plus the production system built from them.
 

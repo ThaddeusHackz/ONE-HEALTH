@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 
 interface Caps {
-  openrouter?: boolean;
-  openrouterKey?: string;
-  lastOpenRouterError?: string | null;
+  gemini?: boolean;
+  geminiKey?: string;
+  lastGeminiError?: string | null;
   search?: boolean;
   voice?: boolean;
   weather?: boolean;
@@ -26,7 +26,7 @@ export function KeyStatus({ compact = false }: { compact?: boolean }) {
   if (!caps) return <p className="text-sm text-muted">Checking server keys…</p>;
 
   const pills = [
-    ["OpenRouter", caps.openrouter, caps.openrouterKey],
+    ["Gemini", caps.gemini, caps.geminiKey],
     ["Tavily", caps.search, "search"],
     ["OpenWeather", caps.weather, "weather"],
     ["ElevenLabs", caps.voice, "voice"],
@@ -43,12 +43,12 @@ export function KeyStatus({ compact = false }: { compact?: boolean }) {
             }`}
           >
             {label} {on ? "live" : "offline"}
-            {label === "OpenRouter" && on && extra ? ` · ${extra}` : ""}
+            {label === "Gemini" && on && extra ? ` · ${extra}` : ""}
           </span>
         ))}
       </div>
-      {!compact && caps.lastOpenRouterError && (
-        <p className="mt-2 text-xs text-ghana-red">{caps.lastOpenRouterError}</p>
+      {!compact && caps.lastGeminiError && (
+        <p className="mt-2 text-xs text-ghana-red">{caps.lastGeminiError}</p>
       )}
     </div>
   );

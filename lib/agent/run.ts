@@ -1,14 +1,15 @@
-import { agentMaxSteps, openRouterKey } from "@/lib/env";
+import { agentMaxSteps, geminiKey } from "@/lib/env";
 import {
   completeStream,
-  openRouterConfigured,
+  geminiConfigured,
+  isCreditError,
+  isFatalAuth,
+  isQuotaError,
   type ChatMessage,
   type ContentPart,
   type ToolCallWire,
-} from "@/lib/openrouter";
+} from "@/lib/llm";
 import { redactText } from "@/lib/redact";
-import { isCreditError, isFatalAuth } from "@/lib/openrouter";
-import { isGeminiQuotaError } from "./gemini";
 import { recordAudit } from "@/lib/store";
 import { AGENT_SYSTEM_PROMPT, isClientTool, runTool, toolSpecs, type ToolContext } from "./tools";
 import { distillMemory, recallFacts, upsertConversation } from "./memory";
@@ -75,7 +76,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const userText = lastTurn?.content || "";
   const hasAttachments = input.turns.some((t) => (t.attachments || []).length > 0);
 
-  if (!openRouterConfigured()) {
+  if (!geminiConfigured()) {
     const text = offlineNotice();
     emit({ type: "delta", text });
     emit({ type: "done", model: "offline", text });
@@ -259,7 +260,7 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
         const e = err as { status?: number; message?: string };
         const status = e.status || 0;
         const message = e.message || String(err);
-        const outOfCredit = isCreditError(status, message) || isFatalAuth(status, message) || isGeminiQuotaError(status, message);
+        const outOfCredit = isCreditError(status, message) || isFatalAuth(status, message) || isQuotaError(status, message);
         const reason = isFatalAuth(status, message)
           ? "the key stopped authorising it"
           : outOfCredit
@@ -307,7 +308,7 @@ async function loop(args: LoopArgs): Promise<AgentRunResult> {
          * and POSTs the result back. A model that emits several client calls
          * in one step (two sandbox_execs, or ask_user + sandbox_exec) used to
          * leave the others with no tool result at all, and the resumed
-         * transcript was rejected by OpenRouter with
+         * transcript was rejected by Gemini with
          * "tool_calls must be followed by tool messages". The extras are now
          * answered with a deferred marker so the transcript stays valid, and
          * the model re-issues them on the next step if it still needs them.
@@ -447,10 +448,10 @@ function truncate(s: string, max: number) {
 }
 
 function offlineNotice() {
-  const keyHint = openRouterKey() ? "" : " Set OPENROUTER_API_KEY on Render to switch on the live model layer.";
+  const keyHint = geminiKey() ? "" : " Set GEMINI_API_KEY on Render to switch on the live model layer.";
   return `**ONE HEALTH AI is in offline mode.**${keyHint}
 
-Everything local still works: the Ghana ensemble forecasts, z-score/CUSUM early warning, DHIMS2 parsing, the workbook, and this interface. The live agent brain - reasoning, tool calling, web research, vision, image generation, sandbox - runs through the OpenRouter key with automatic multi-model fallback.
+Everything local still works: the Ghana ensemble forecasts, z-score/CUSUM early warning, DHIMS2 parsing, the workbook, and this interface. The live agent brain - reasoning, tool calling, web research, vision, image generation, sandbox - runs through the Gemini key with automatic model fallback across the Gemini chain.
 
 Try the **Forecast**, **Surveillance** or **Extracts** tabs, or add the key and reload.`;
 }

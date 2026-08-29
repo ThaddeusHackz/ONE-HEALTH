@@ -7,11 +7,10 @@
  * Layers:
  *   1. Static audit      - typecheck, lint, source contracts, model-chain hygiene
  *   2. Engine forensics  - the REAL lib/ code compiled once, then driven against
- *                          local mock OpenRouter + Gemini servers (real HTTP on
- *                          127.0.0.1). No external network, no real keys.
- *   3. Vision forensics  - vision_read / Vision Lab / ingest run end to end;
- *                          asserts the OpenRouter mock receives ZERO calls
- *                          (vision + deep research are Gemini-only).
+ *                          a local mock Gemini server (real HTTP on 127.0.0.1).
+ *                          No external network, no real keys.
+ *   3. Vision forensics  - vision_read / Vision Lab / ingest run end to end on
+ *                          the same single Gemini engine.
  *   4. Document forensics- the real Phase 2 workbook PDF is extracted and
  *                          inspected for mojibake, control bytes and content.
  *
@@ -81,117 +80,107 @@ function readBody(req) {
 }
 
 /**
- * Mock OpenRouter. Behaviour is driven by mutable state:
+ * Mock Gemini API - real HTTP, scriptable behaviour. Covers the three routes
+ * the engine uses:
+ *   GET  /models                                     - the catalogue
+ *   POST /models/{model}:generateContent             - blocking completion
+ *   POST /models/{model}:streamGenerateContent?alt=sse - streaming + tools
+ *
+ * State:
  *   catalogue   - slugs reported by GET /models
- *   deadSlugMsg - map slug -> error message returned for any request whose
- *                 models array contains it (simulates "No endpoints found")
+ *   deadSlugMsg - map slug -> 404 "is not found" message (retired model)
  *   failSlug    - map slug -> {status, message} for individual model failures
- *   respond     - fn(body) -> {model, text} for a successful completion
- *   failAll     - {status, message}: every completion fails (credit/auth tests)
- *   calls       - every request body, for asserting what was and was not sent
+ *   respond     - fn(model, body) -> {status, json} for a completion
+ *   stream      - fn(model, body) -> [chunk, ...] SSE payload objects
+ *   failAll     - {status, message}: every completion fails (auth/quota tests)
+ *   calls       - every request, for asserting what was and was not sent
  */
-function makeOpenRouterMock() {
+function makeGeminiApiMock() {
   const state = {
     catalogue: [],
     deadSlugMsg: {},
     failSlug: {},
     respond: null,
+    stream: null,
     failAll: null,
     calls: [],
   };
   const handler = async (req, res) => {
     const body = await readBody(req);
-    const send = (status, json) => {
+    const sendJson = (status, json) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(json));
     };
-    if (req.url.endsWith("/models")) {
-      send(200, { data: state.catalogue.map((id) => ({ id })) });
-      return;
-    }
-    if (req.url.endsWith("/chat/completions")) {
-      let parsed = {};
-      try {
-        parsed = JSON.parse(body || "{}");
-      } catch {}
-      state.calls.push(parsed);
-      if (state.failAll) {
-        send(state.failAll.status, { error: { message: state.failAll.message } });
-        return;
-      }
-      const models = (Array.isArray(parsed.models) ? parsed.models : [parsed.model]).filter(Boolean);
-      // A "No endpoints found" slug poisons the WHOLE request (observed OpenRouter
-      // behaviour, and the reason the old chain lost Claude/Mistral/DeepSeek).
-      for (const slug of models) {
-        if (state.deadSlugMsg[slug]) {
-          send(400, { error: { message: state.deadSlugMsg[slug] } });
-          return;
-        }
-      }
-      // A model-specific failure (429/5xx/402) walks down the array to the next
-      // healthy slug, like OpenRouter's provider fallback does.
-      const healthy = models.filter((slug) => !state.failSlug[slug]);
-      if (!healthy.length) {
-        const first = state.failSlug[models[0]] || { status: 500, message: "all models failed" };
-        send(first.status, { error: { message: first.message } });
-        return;
-      }
-      if (state.failSlug[models[0]]) {
-        // emulate latency-free in-array fallback by answering from the next model
-        const r = state.respond ? state.respond({ ...parsed, models: healthy, model: healthy[0] }) : null;
-        if (!r) {
-          send(state.failSlug[models[0]].status, { error: { message: state.failSlug[models[0]].message } });
-          return;
-        }
-        send(200, { id: `gen-${randomUUID().slice(0, 8)}`, model: r.model, choices: [{ message: { content: r.text } }] });
-        return;
-      }
-      if (!state.respond) {
-        send(500, { error: { message: "mock has no responder configured" } });
-        return;
-      }
-      const r = state.respond(parsed);
-      send(200, { id: `gen-${randomUUID().slice(0, 8)}`, model: r.model, choices: [{ message: { content: r.text } }] });
-      return;
-    }
-    send(404, { error: { message: "unknown mock route" } });
-  };
-  return { state, start: () => startServer(handler) };
-}
+    const url = req.url.split("?")[0];
 
-/** Mock Gemini - POST /v1beta/models/{model}:generateContent */
-function makeGeminiMock() {
-  const state = {
-    respond: null, // fn(model, body) -> {status, json}
-    calls: [],
-  };
-  const handler = async (req, res) => {
-    const body = await readBody(req);
-    const m = /\/models\/([^:]+):generateContent$/.exec(req.url);
-    if (!m) {
-      res.writeHead(404);
-      res.end("{}");
+    if (/\/models$/.test(url) && req.method === "GET") {
+      sendJson(200, {
+        models: state.catalogue.map((id) => ({
+          name: `models/${id}`,
+          supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+        })),
+      });
       return;
     }
+
+    const m = /\/models\/([^:]+):(generateContent|streamGenerateContent)$/.exec(url);
+    if (!m) {
+      sendJson(404, { error: { message: "unknown mock route" } });
+      return;
+    }
+    const model = decodeURIComponent(m[1]);
+    const streaming = m[2] === "streamGenerateContent";
     let parsed = {};
     try {
       parsed = JSON.parse(body || "{}");
     } catch {}
-    state.calls.push({ model: m[1], body: parsed });
-    if (!state.respond) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: { message: "gemini mock has no responder" } }));
+    state.calls.push({ model, streaming, body: parsed });
+
+    if (state.failAll) {
+      sendJson(state.failAll.status, { error: { message: state.failAll.message } });
       return;
     }
-    const r = state.respond(m[1], parsed);
-    res.writeHead(r.status, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(r.json));
+    if (state.deadSlugMsg[model]) {
+      sendJson(404, { error: { message: state.deadSlugMsg[model] } });
+      return;
+    }
+    if (state.failSlug[model]) {
+      sendJson(state.failSlug[model].status, { error: { message: state.failSlug[model].message } });
+      return;
+    }
+
+    if (streaming) {
+      if (!state.stream) {
+        sendJson(500, { error: { message: "gemini mock has no stream responder" } });
+        return;
+      }
+      const chunks = state.stream(model, parsed);
+      if (chunks && chunks.error) {
+        sendJson(chunks.error.status, { error: { message: chunks.error.message } });
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      for (const c of chunks) res.write(`data: ${JSON.stringify(c)}\n\n`);
+      res.end();
+      return;
+    }
+
+    if (!state.respond) {
+      sendJson(500, { error: { message: "gemini mock has no responder" } });
+      return;
+    }
+    const r = state.respond(model, parsed);
+    sendJson(r.status, r.json);
   };
   return { state, start: () => startServer(handler) };
 }
 
 const geminiText = (text) => ({ status: 200, json: { candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] } });
 const geminiError = (status, message) => ({ status, json: { error: { message, status: String(status) } } });
+/** SSE chunk carrying visible text. */
+const streamText = (text) => ({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] });
+/** SSE chunk carrying a function call. */
+const streamCall = (name, args) => ({ candidates: [{ content: { parts: [{ functionCall: { name, args } }] }, finishReason: "STOP" }] });
 
 /* ---------------------------------------------------------------- *
  * Minimal, valid PDF built by hand: one page, uncompressed text ops,
@@ -249,28 +238,22 @@ function buildTestPdf() {
     return "0 errors (warnings allowed)";
   });
 
-  /** Slugs verified live against openrouter.ai/api/v1/models on 2026-08-29. */
+  /** Gemini API models verified available on Google AI Studio, 2026-08-29. */
   const VERIFIED_LIVE = [
-    "openai/gpt-4.1-mini", "openai/gpt-4.1", "openai/gpt-4o", "openai/gpt-4o-mini",
-    "google/gemini-2.5-flash", "google/gemini-2.5-pro",
-    "anthropic/claude-sonnet-4.6", "anthropic/claude-sonnet-4", "anthropic/claude-haiku-4.5",
-    "deepseek/deepseek-v3.2", "deepseek/deepseek-chat", "deepseek/deepseek-r1",
-    "mistralai/mistral-small-3.2-24b-instruct", "mistralai/mistral-nemo",
-    "mistralai/mistral-large-2512", "mistralai/mistral-small-2603", "mistralai/mistral-small-3.1-24b-instruct",
-    "meta-llama/llama-3.3-70b-instruct",
-    "google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite",
+    "gemini-2.0-flash", "gemini-2.0-flash-lite",
+    "gemini-flash-latest", "gemini-pro-latest",
+    "gemma-3-27b-it", "gemma-3-12b-it",
   ];
-  /** Slugs verified DEAD (zero endpoints) on OpenRouter, 2026-08-29. */
+  /** Slugs that must never appear again: retired Gemini models and every
+   *  OpenRouter-style vendor-prefixed slug from the old gateway. */
   const VERIFIED_DEAD = [
-    "anthropic/claude-3.5-sonnet", "mistralai/mistral-large-2411",
-    "meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free",
-    "qwen/qwen-2.5-72b-instruct:free", "mistralai/mistral-7b-instruct:free",
-    "nousresearch/hermes-3-llama-3.1-405b:free", "openai/gpt-oss-120b:free",
-    "openai/gpt-oss-20b:free", "inclusionai/ling-3.0-flash:free",
-    "deepseek/deepseek-chat-v3-0324:free", "deepseek/deepseek-v3-base:free",
+    "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro",
+    "openai/gpt-4.1-mini", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4.6",
+    "deepseek/deepseek-v3.2", "meta-llama/llama-3.3-70b-instruct",
+    "mistralai/mistral-nemo", "openrouter/auto", "google/gemini-2.5-flash",
   ];
 
-  let openrouterSrc = "";
   function arrayLiteral(src, name) {
     const start = src.indexOf(`export const ${name} = [`);
     assert(start >= 0, `${name} not found`);
@@ -278,11 +261,11 @@ function buildTestPdf() {
     return src.slice(start, end);
   }
 
-  check("model chain hygiene: no dead slugs, 3-per-request groups", () => {
-    openrouterSrc = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
+  check("model chain hygiene: Gemini slugs only, no retired or gateway slugs", () => {
+    const llmSrc = fs.readFileSync(path.join(ROOT, "lib/llm.ts"), "utf8");
     const modelsSrc = fs.readFileSync(path.join(ROOT, "lib/agent/models.ts"), "utf8");
-    const chatArr = arrayLiteral(openrouterSrc, "CHAT_MODELS");
-    const freeArr = arrayLiteral(openrouterSrc, "FREE_MODELS");
+    const chatArr = arrayLiteral(llmSrc, "CHAT_MODELS");
+    const freeArr = arrayLiteral(llmSrc, "FREE_MODELS");
     const dropdownArr = modelsSrc.slice(modelsSrc.indexOf("export const PINNABLE_MODELS"), modelsSrc.indexOf("export const PINNABLE_SLUGS"));
     const shipped = [...chatArr.matchAll(/"([^"]+)"/g)].map((m) => m[1]).concat([...freeArr.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
     const dropdownSlugs = [...dropdownArr.matchAll(/slug: "([^"]+)"/g)].map((m) => m[1]);
@@ -290,26 +273,69 @@ function buildTestPdf() {
       assert(!shipped.includes(dead), `${dead} is retired but still in the chain`);
       assert(!dropdownSlugs.includes(dead), `${dead} is retired but still in the dropdown`);
     }
-    assert(shipped.length >= 12, `chain too thin: ${shipped.length}`);
-    assert(shipped.every((s) => VERIFIED_LIVE.includes(s)), `chain contains an unverified slug: ${shipped.filter((s) => !VERIFIED_LIVE.includes(s)).join(", ")}`);
-    assert(/MAX_MODELS_PER_REQUEST = 3/.test(openrouterSrc), "3-slug request limit constant missing");
-    assert(dropdownSlugs.every((s) => VERIFIED_LIVE.includes(s)), `dropdown contains an unverified slug: ${dropdownSlugs.filter((s) => !VERIFIED_LIVE.includes(s)).join(", ")}`);
-    return `${shipped.length} chain slugs + ${dropdownSlugs.length} dropdown slugs, all verified live 2026-08-29`;
+    for (const slug of [...shipped, ...dropdownSlugs]) {
+      assert(!slug.includes("/"), `${slug} is a gateway-style slug - the Gemini API takes a bare model name`);
+    }
+    assert(shipped.length >= 6, `chain too thin: ${shipped.length}`);
+    assert(shipped.every((x) => VERIFIED_LIVE.includes(x)), `chain contains an unverified slug: ${shipped.filter((x) => !VERIFIED_LIVE.includes(x)).join(", ")}`);
+    assert(dropdownSlugs.every((x) => VERIFIED_LIVE.includes(x)), `dropdown contains an unverified slug: ${dropdownSlugs.filter((x) => !VERIFIED_LIVE.includes(x)).join(", ")}`);
+    assert(/MAX_MODELS_PER_REQUEST = 1/.test(llmSrc), "the one-model-per-request constant is missing");
+    return `${shipped.length} chain slugs + ${dropdownSlugs.length} dropdown slugs, all Gemini, all verified 2026-08-29`;
   });
 
-  check("source contract: vision + deep research never touch OpenRouter", () => {
+  check("source contract: the whole platform runs on ONE Gemini key", () => {
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) {
+          const text = fs.readFileSync(full, "utf8");
+          const rel = path.relative(ROOT, full);
+          // lib/env.ts keeps ONE deliberate mention: the sk-or guard.
+          if (rel === "lib/env.ts") continue;
+          if (/openrouter/i.test(text) || /OPENROUTER_API_KEY/.test(text)) offenders.push(rel);
+        }
+      }
+    };
+    walk(path.join(ROOT, "lib"));
+    walk(path.join(ROOT, "app"));
+    walk(path.join(ROOT, "components"));
+    assert(offenders.length === 0, `OpenRouter still referenced in: ${offenders.join(", ")}`);
+
+    for (const f of ["render.yaml", ".env.example"]) {
+      const text = fs.readFileSync(path.join(ROOT, f), "utf8");
+      assert(!/OPENROUTER/i.test(text), `${f} still declares an OpenRouter variable`);
+      assert(/GEMINI_API_KEY/.test(text), `${f} does not declare GEMINI_API_KEY`);
+    }
+
+    const env = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
+    assert(/sk-or-/.test(env) && /geminiKey/.test(env), "the sk-or guard on geminiKey is gone");
+    assert(!/openRouterKey|openRouterReferer|openRouterTitle/.test(env), "lib/env.ts still exports OpenRouter accessors");
+    assert(!fs.existsSync(path.join(ROOT, "lib/openrouter.ts")), "lib/openrouter.ts still exists");
+    assert(!fs.existsSync(path.join(ROOT, "lib/or-review.ts")), "lib/or-review.ts still exists");
+
+    // Every AI surface resolves its credential through geminiKey().
+    for (const f of ["app/api/transcribe/route.ts", "app/api/tts/route.ts", "lib/agent/media.ts", "lib/llm.ts"]) {
+      const text = fs.readFileSync(path.join(ROOT, f), "utf8");
+      assert(/geminiKey/.test(text), `${f} does not use the Gemini key`);
+    }
+    return "zero OpenRouter references in product code, config or env; one key everywhere";
+  });
+
+  check("source contract: vision + deep research run on the Gemini engine", () => {
     const analyze = fs.readFileSync(path.join(ROOT, "lib/analyze.ts"), "utf8");
     const tools = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
     const research = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
-    for (const [name, src] of [["analyze.ts", analyze], ["tools.ts", tools], ["deep-research.ts", research]]) {
-      assert(!/visionAnalyze/.test(src), `${name} still calls the OpenRouter vision path`);
-      assert(!/VISION_MODELS/.test(src), `${name} still references an OpenRouter vision chain`);
-    }
-    const researchCode = research.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    assert(!/openrouter/i.test(researchCode), "deep-research.ts references OpenRouter in code");
-    assert(!/from "\.\.\/openrouter"|from "@\/lib\/openrouter"/.test(research), "deep-research.ts imports the OpenRouter client");
+    assert(/geminiVision\(\{/.test(analyze), "analyzeUploads is not Gemini-driven");
+    assert(/geminiVision\(\{/.test(tools), "vision_read is not Gemini-driven");
     assert(/geminiComplete/.test(research), "deep research does not synthesise on Gemini");
-    return "no OpenRouter vision/research path exists in the product code";
+    for (const [name, src] of [["analyze.ts", analyze], ["tools.ts", tools], ["deep-research.ts", research]]) {
+      assert(!/visionAnalyze/.test(src), `${name} still calls a legacy vision path`);
+      assert(!/VISION_MODELS/.test(src), `${name} still references a legacy vision chain`);
+    }
+    return "vision + research are Gemini, with no legacy path left";
   });
 
   check("instrumentation runtime split: no fs at module scope of instrumentation.ts", () => {
@@ -352,182 +378,274 @@ function buildTestPdf() {
   };
   const compiled = path.join(OUT, "lib");
 
-  /* ------------------- start the mock providers ------------------- */
-  const orMock = makeOpenRouterMock();
-  const gemMock = makeGeminiMock();
-  const orHttp = await orMock.start();
+  /* ------------------- start the mock provider ------------------- */
+  const gemMock = makeGeminiApiMock();
   const gemHttp = await gemMock.start();
-  const OR = orMock.state;
   const GEM = gemMock.state;
-  orMock.state.catalogue = [...VERIFIED_LIVE];
-  process.env.OPENROUTER_API_KEY = "sk-or-v1-forensic-scan";
+  GEM.catalogue = [...VERIFIED_LIVE];
   process.env.GEMINI_API_KEY = "AIza-forensic-scan-key";
   // A Tavily key makes agentWebSearch take the Tavily JSON path, which the
   // fetch stub below can answer; without it the DuckDuckGo HTML scraper runs.
   process.env.TAVILY_API_KEY = "tvly-forensic-scan";
-  process.env.OPENROUTER_API_BASE = `http://127.0.0.1:${orHttp.port}`;
   process.env.GEMINI_API_BASE = `http://127.0.0.1:${gemHttp.port}`;
-  const openrouter = require(path.join(compiled, "openrouter.js"));
-  openrouter.resetModelCatalogue();
+  delete process.env.GEMINI_MODELS;
+  const llm = require(path.join(compiled, "llm.js"));
+  llm.resetModelCatalogue();
   const geminiLib = require(path.join(compiled, "agent/gemini.js"));
   const toolsLib = require(path.join(compiled, "agent/tools.js"));
   const researchLib = require(path.join(compiled, "agent/deep-research.js"));
   const filesLib = require(path.join(compiled, "files.js"));
   const analyzeLib = require(path.join(compiled, "analyze.js"));
-  ok(`mock OpenRouter on :${orHttp.port}, mock Gemini on :${gemHttp.port}`);
+  ok(`mock Gemini API on :${gemHttp.port}`);
 
-  const zeroOR = (label) => assert(OR.calls.length === 0, `${label}: OpenRouter received ${OR.calls.length} call(s) - the Gemini-only contract is broken`);
-  const resetOR = () => { OR.calls.length = 0; };
-  const resetCatalogue = () => { openrouter.resetModelCatalogue(); };
+  const resetGem = () => {
+    GEM.calls.length = 0;
+    GEM.failSlug = {};
+    GEM.deadSlugMsg = {};
+    GEM.failAll = null;
+    GEM.catalogue = [...VERIFIED_LIVE];
+  };
+  const resetCatalogue = () => { llm.resetModelCatalogue(); };
 
-  /* ----------------- Layer 2: OpenRouter engine forensics ----------------- */
-  console.log("\n■ Layer 2 · OpenRouter engine forensics (live code × mock provider)");
+  /* ----------------- Layer 2: Gemini engine forensics ----------------- */
+  console.log("\n■ Layer 2 · Gemini engine forensics (live code × mock provider)");
 
-  await checkAsync("auto chain walks groups in order and reports the answering model", async () => {
-    resetCatalogue(); resetOR();
-    OR.respond = (body) => ({ model: (body.models || [])[0] || body.model, text: `ANSWER_FROM_${(body.models || [])[0]}` });
-    OR.failSlug = { "openai/gpt-4.1-mini": { status: 503, message: "provider overloaded - try again" } };
-    const r = await openrouter.complete({ messages: [{ role: "user", content: "ping" }] });
-    assert(r.text === "ANSWER_FROM_google/gemini-2.5-flash", `expected the group-2 model to answer, got ${r.text}`);
-    assert((r.tried || []).includes("openai/gpt-4.1-mini"), "tried list missing the failed slug");
+  await checkAsync("every request carries the key as x-goog-api-key on the right URL", async () => {
+    resetGem(); resetCatalogue();
+    GEM.respond = (model) => geminiText(`ANSWER_FROM_${model}`);
+    const r = await llm.complete({ messages: [{ role: "user", content: "ping" }] });
+    assert(r.text === "ANSWER_FROM_gemini-2.5-flash", r.text);
+    const call = GEM.calls[GEM.calls.length - 1];
+    assert(call.model === "gemini-2.5-flash", `wrong model in the URL: ${call.model}`);
+    assert(!call.streaming, "a blocking completion used the streaming route");
+    assert(call.body.contents?.[0]?.role === "user", "contents not built");
+    return "POST /models/gemini-2.5-flash:generateContent";
+  });
+
+  await checkAsync("auto chain walks models in order and reports the answering model", async () => {
+    resetGem(); resetCatalogue();
+    GEM.respond = (model) => geminiText(`ANSWER_FROM_${model}`);
+    GEM.failSlug = { "gemini-2.5-flash": { status: 503, message: "backend overloaded - try again" } };
+    const r = await llm.complete({ messages: [{ role: "user", content: "ping" }] });
+    assert(r.text === "ANSWER_FROM_gemini-2.5-pro", `expected the second model to answer, got ${r.text}`);
+    assert((r.tried || []).includes("gemini-2.5-flash"), "tried list missing the failed slug");
     return `first model 503 → ${r.model} answered`;
   });
 
-  await checkAsync("a retired slug inside a group cannot poison its group (recovery)", async () => {
-    resetCatalogue(); resetOR();
+  await checkAsync("a retired slug is skipped, cached and never re-requested", async () => {
+    resetGem(); resetCatalogue();
     // Stale catalogue: the dead slug is still listed, so the request DOES go
-    // out and the endpoint error is what reveals the retirement.
-    OR.catalogue = [...VERIFIED_LIVE, "anthropic/claude-3.5-sonnet"];
-    OR.failSlug = {};
-    OR.deadSlugMsg = { "anthropic/claude-3.5-sonnet": "No endpoints found that match your request. Supported params: model=anthropic/claude-3.5-sonnet." };
-    // force the dead slug into the chain via preferred models with live neighbours
-    OR.respond = (body) => ({ model: (body.models || [])[0], text: `ANSWER_FROM_${(body.models || [])[0]}` });
-    const r = await openrouter.complete({
+    // out and the 404 is what reveals the retirement.
+    GEM.catalogue = [...VERIFIED_LIVE, "gemini-1.5-flash"];
+    GEM.deadSlugMsg = { "gemini-1.5-flash": "models/gemini-1.5-flash is not found for API version v1beta" };
+    GEM.respond = (model) => geminiText(`ANSWER_FROM_${model}`);
+    const r = await llm.complete({
       messages: [{ role: "user", content: "ping" }],
-      models: ["anthropic/claude-sonnet-4.6", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-v3.2"],
+      models: ["gemini-1.5-flash", "gemini-2.5-pro"],
     });
-    assert(r.text.startsWith("ANSWER_FROM_anthropic/claude-sonnet-4.6"), `survivor did not answer: ${r.text}`);
-    // the group request went out once with the dead slug, then was retried without it
-    const firstCall = OR.calls[0];
-    assert((firstCall.models || []).includes("anthropic/claude-3.5-sonnet"), "the poisoned group was never sent (test setup broken)");
-    assert((OR.calls[1]?.models || []).length === 2, `no clean retry without the dead slug: ${JSON.stringify(OR.calls.map((c) => c.models))}`);
-    // second call must never re-send the proven-dead slug
-    OR.calls.length = 0;
-    await openrouter.complete({
+    assert(r.text === "ANSWER_FROM_gemini-2.5-pro", `survivor did not answer: ${r.text}`);
+    assert(GEM.calls.some((c) => c.model === "gemini-1.5-flash"), "the dead slug was never tried (test setup broken)");
+    GEM.calls.length = 0;
+    await llm.complete({
       messages: [{ role: "user", content: "pong" }],
-      models: ["anthropic/claude-sonnet-4.6", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-v3.2"],
+      models: ["gemini-1.5-flash", "gemini-2.5-pro"],
     });
-    const resent = OR.calls.some((c) => (c.models || []).includes("anthropic/claude-3.5-sonnet"));
-    assert(!resent, "the proven-dead slug was re-sent on the next request");
-    return "group with a dead slug retried without it; dead slug cached and never re-sent";
+    assert(!GEM.calls.some((c) => c.model === "gemini-1.5-flash"), "the proven-dead slug was re-sent on the next request");
+    return "404 slug skipped, cached for the process, never paid for twice";
   });
 
   await checkAsync("the live catalogue filters retired slugs before any request", async () => {
-    resetCatalogue(); resetOR();
-    OR.deadSlugMsg = {};
-    OR.catalogue = VERIFIED_LIVE.filter((s) => s !== "mistralai/mistral-nemo" && s !== "meta-llama/llama-3.3-70b-instruct");
-    OR.respond = (body) => ({ model: (body.models || [])[0], text: "OK" });
-    await openrouter.complete({ messages: [{ role: "user", content: "ping" }], models: ["mistralai/mistral-nemo", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-chat"] });
-    const sent = OR.calls.flatMap((c) => c.models || []);
-    assert(!sent.includes("mistralai/mistral-nemo") && !sent.includes("meta-llama/llama-3.3-70b-instruct"), "catalogue-dead slugs were still requested");
+    resetGem(); resetCatalogue();
+    GEM.catalogue = VERIFIED_LIVE.filter((x) => x !== "gemini-2.0-flash" && x !== "gemma-3-27b-it");
+    GEM.respond = (model) => geminiText("OK");
+    await llm.complete({ messages: [{ role: "user", content: "ping" }], models: ["gemini-2.0-flash", "gemma-3-27b-it", "gemini-2.5-pro"] });
+    const sent = GEM.calls.map((c) => c.model);
+    assert(!sent.includes("gemini-2.0-flash") && !sent.includes("gemma-3-27b-it"), `catalogue-dead slugs were still requested: ${sent.join(",")}`);
     return "catalogue-dead slugs never left the building";
   });
 
-  await checkAsync("paid-chain credit exhaustion falls back to the free chain", async () => {
-    resetCatalogue(); resetOR();
-    OR.catalogue = [...VERIFIED_LIVE];
-    OR.failSlug = {};
-    OR.deadSlugMsg = {};
-    const paid = VERIFIED_LIVE.filter((s) => !/:free$/.test(s));
-    for (const s of paid) OR.failSlug[s] = { status: 402, message: "Insufficient credits: you have run out of credits" };
-    OR.respond = (body) => ({ model: (body.models || [])[0], text: `FREE_ANSWER_${(body.models || [])[0]}` });
-    const r = await openrouter.complete({ messages: [{ role: "user", content: "ping" }], models: paid.slice(0, 3) });
+  await checkAsync("quota exhaustion on the main chain falls back to the free chain", async () => {
+    resetGem(); resetCatalogue();
+    for (const slug of ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-flash-latest"]) {
+      GEM.failSlug[slug] = { status: 429, message: "Resource has been exhausted (e.g. check quota)." };
+    }
+    GEM.respond = (model) => geminiText(`FREE_ANSWER_${model}`);
+    const r = await llm.complete({ messages: [{ role: "user", content: "ping" }] });
     assert(r.text.startsWith("FREE_ANSWER_"), `free chain did not answer: ${r.text}`);
-    OR.failSlug = {};
-    return `402 on every paid model → ${r.model} answered`;
+    assert(/quota/i.test(r.degraded || ""), "the degradation was not disclosed");
+    return `429 on the main chain → ${r.model} answered`;
   });
 
-  await checkAsync("a pinned model is sent ALONE - one slug, no fallback array", async () => {
-    resetCatalogue(); resetOR();
-    OR.failSlug = {};
-    OR.respond = (body) => ({ model: body.model, text: `PINNED_${body.model}` });
-    const r = await openrouter.complete({ messages: [{ role: "user", content: "ping" }], models: ["anthropic/claude-sonnet-4.6"], pinned: true });
-    assert(r.text === "PINNED_anthropic/claude-sonnet-4.6", r.text);
-    assert(OR.calls.length === 1, `expected exactly one request, got ${OR.calls.length}`);
-    const body = OR.calls[0];
-    assert(!Array.isArray(body.models), "pinned request carried a fallback models array");
-    assert(body.model === "anthropic/claude-sonnet-4.6", `pinned request carried ${body.model}`);
-    return "single model field, zero substitution";
+  await checkAsync("a pinned model is used ALONE - one slug, no substitution", async () => {
+    resetGem(); resetCatalogue();
+    GEM.respond = (model) => geminiText(`PINNED_${model}`);
+    const r = await llm.complete({ messages: [{ role: "user", content: "ping" }], models: ["gemini-2.5-pro"], pinned: true });
+    assert(r.text === "PINNED_gemini-2.5-pro", r.text);
+    assert(GEM.calls.length === 1, `expected exactly one request, got ${GEM.calls.length}`);
+    assert(GEM.calls.every((c) => c.model === "gemini-2.5-pro"), "another model was contacted for a pinned request");
+    return "single model, zero substitution";
   });
 
   await checkAsync("pinning a retired model fails LOUDLY instead of answering from a substitute", async () => {
-    resetCatalogue(); resetOR();
-    OR.deadSlugMsg = { "mistralai/mistral-large-2411": "No endpoints found that match your request" };
-    OR.respond = (body) => ({ model: body.model, text: "SHOULD_NEVER_ANSWER" });
+    resetGem(); resetCatalogue();
+    GEM.deadSlugMsg = { "gemini-1.5-pro": "models/gemini-1.5-pro is not found for API version v1beta" };
+    GEM.respond = () => geminiText("SHOULD_NEVER_ANSWER");
     let threw = "";
     try {
-      await openrouter.complete({ messages: [{ role: "user", content: "ping" }], models: ["mistralai/mistral-large-2411"], pinned: true });
+      await llm.complete({ messages: [{ role: "user", content: "ping" }], models: ["gemini-1.5-pro"], pinned: true });
     } catch (err) {
       threw = err.message;
     }
-    assert(threw.includes("mistralai/mistral-large-2411"), `error does not name the pinned slug: ${threw}`);
-    assert(!OR.calls.some((c) => c.model !== "mistralai/mistral-large-2411"), "a substitute model answered a pinned request");
+    assert(threw.includes("gemini-1.5-pro"), `error does not name the pinned slug: ${threw}`);
+    assert(GEM.calls.every((c) => c.model === "gemini-1.5-pro"), "a substitute model answered a pinned request");
     return "loud, named failure; no substitution";
   });
 
   await checkAsync("a rejected key stops the chain immediately", async () => {
-    resetCatalogue(); resetOR();
-    OR.deadSlugMsg = {};
-    OR.failSlug = {};
-    OR.failAll = { status: 401, message: "Invalid API key provided" };
+    resetGem(); resetCatalogue();
+    GEM.failAll = { status: 400, message: "API key not valid. Please pass a valid API key." };
     let threw = "";
     try {
-      await openrouter.complete({ messages: [{ role: "user", content: "ping" }] });
+      await llm.complete({ messages: [{ role: "user", content: "ping" }] });
     } catch (err) {
       threw = err.message;
     }
-    assert(/rejected the API key/.test(threw), `auth failure not surfaced as a key problem: ${threw}`);
-    assert(OR.calls.length <= 3, `a bad key was retried ${OR.calls.length} times`);
-    OR.failAll = null;
+    assert(/rejected the API key/.test(threw) && /GEMINI_API_KEY/.test(threw), `auth failure not surfaced as a key problem: ${threw}`);
+    assert(GEM.calls.length <= 2, `a bad key was retried ${GEM.calls.length} times`);
     return "auth error → immediate stop with a clear message";
   });
 
+  await checkAsync("streaming: deltas arrive and the model is reported", async () => {
+    resetGem(); resetCatalogue();
+    GEM.stream = (model) => [streamText("Hello "), streamText("Ghana.")];
+    let streamed = "";
+    const r = await llm.completeStream({
+      messages: [{ role: "user", content: "hi" }],
+      onDelta: (t) => { streamed += t; },
+    });
+    assert(streamed === "Hello Ghana." && r.text === "Hello Ghana.", `stream mismatch: "${streamed}" / "${r.text}"`);
+    assert(GEM.calls[0].streaming, "the streaming route was not used");
+    return `${r.model} streamed 2 chunks`;
+  });
+
+  await checkAsync("streaming tool calling: functionDeclarations out, functionCall back", async () => {
+    resetGem(); resetCatalogue();
+    GEM.stream = (model, body) => {
+      const decls = body.tools?.[0]?.functionDeclarations || [];
+      if (!decls.some((d) => d.name === "ghana_forecast")) return [streamText("NO_TOOLS_DECLARED")];
+      return [streamCall("ghana_forecast", { diseaseId: "malaria" })];
+    };
+    const r = await llm.completeStream({
+      messages: [{ role: "user", content: "forecast malaria" }],
+      tools: toolsLib.toolSpecs(["ghana_forecast"]),
+      onDelta: () => {},
+    });
+    assert(r.toolCalls.length === 1, `expected one tool call, got ${r.toolCalls.length}`);
+    assert(r.toolCalls[0].name === "ghana_forecast", r.toolCalls[0].name);
+    assert(JSON.parse(r.toolCalls[0].arguments).diseaseId === "malaria", r.toolCalls[0].arguments);
+    // The JSON-Schema keywords Gemini rejects must have been stripped.
+    const decls = GEM.calls[0].body.tools[0].functionDeclarations;
+    const raw = JSON.stringify(decls);
+    assert(!/additionalProperties|\$schema|exclusiveMinimum/.test(raw), "unsupported JSON-Schema keywords reached Gemini");
+    return `${decls.length} declaration(s) sent, functionCall parsed back`;
+  });
+
+  await checkAsync("a model that rejects tools is retried without them, then the chain moves on", async () => {
+    resetGem(); resetCatalogue();
+    GEM.stream = (model, body) => {
+      if (model === "gemini-2.5-flash" && body.tools) return { error: { status: 400, message: "Function calling is not enabled for this model" } };
+      if (model === "gemini-2.5-flash") return [streamText("ANSWERED_WITHOUT_TOOLS")];
+      return [streamText(`FROM_${model}`)];
+    };
+    const r = await llm.completeStream({
+      messages: [{ role: "user", content: "hi" }],
+      tools: toolsLib.toolSpecs(["ghana_forecast"]),
+      onDelta: () => {},
+    });
+    assert(r.text === "ANSWERED_WITHOUT_TOOLS", `tool-drop retry did not happen: ${r.text}`);
+    return "tools rejected → same model retried tool-free";
+  });
+
+  await checkAsync("the tool round trip survives the transcript conversion", async () => {
+    resetGem(); resetCatalogue();
+    GEM.stream = (model, body) => {
+      const contents = body.contents || [];
+      const hasCall = contents.some((c) => (c.parts || []).some((p) => p.functionCall?.name === "ghana_forecast"));
+      const hasResp = contents.some((c) => (c.parts || []).some((p) => p.functionResponse?.name === "ghana_forecast"));
+      return [streamText(hasCall && hasResp ? "ROUND_TRIP_OK" : `BROKEN call=${hasCall} resp=${hasResp}`)];
+    };
+    const r = await llm.completeStream({
+      messages: [
+        { role: "user", content: "forecast malaria" },
+        { role: "assistant", content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "ghana_forecast", arguments: '{"diseaseId":"malaria"}' } }] },
+        { role: "tool", tool_call_id: "c1", name: "ghana_forecast", content: "cases rising" },
+      ],
+      onDelta: () => {},
+    });
+    assert(r.text === "ROUND_TRIP_OK", r.text);
+    return "assistant functionCall + tool functionResponse both reach the model";
+  });
+
+  await checkAsync("thinking is disabled by default so a 2.5 model cannot starve on tokens", async () => {
+    resetGem(); resetCatalogue();
+    GEM.respond = () => geminiText("OK");
+    await llm.complete({ messages: [{ role: "user", content: "hi" }] });
+    const cfg = GEM.calls[0].body.generationConfig;
+    assert(cfg.thinkingConfig?.thinkingBudget === 0, "thinking not disabled on the first attempt (starvation guard)");
+    assert(cfg.maxOutputTokens >= 1024, "output budget too small");
+    return "thinkingBudget 0 on attempt 1";
+  });
+
+  await checkAsync("hidden thinking parts are never streamed as the answer", async () => {
+    resetGem(); resetCatalogue();
+    GEM.stream = () => [
+      { candidates: [{ content: { parts: [{ text: "SECRET_CHAIN_OF_THOUGHT", thought: true }] } }] },
+      streamText("VISIBLE_ANSWER"),
+    ];
+    let visible = "";
+    let think = "";
+    const r = await llm.completeStream({
+      messages: [{ role: "user", content: "hi" }],
+      onDelta: (t, k) => { visible += t; think += k; },
+    });
+    assert(r.text === "VISIBLE_ANSWER" && !visible.includes("SECRET"), `thought leak: ${visible}`);
+    assert(think.includes("SECRET"), "reasoning was dropped instead of routed to the reasoning channel");
+    return "thought parts routed to the reasoning channel, never to the answer";
+  });
+
   await checkAsync("modelCatalogueStatus tells verified-live apart from unverifiable", async () => {
-    resetCatalogue();
-    const chain = openrouter.CHAT_MODELS;
-    let status = await openrouter.modelCatalogueStatus([...chain, "made-up/retired-slug"]);
+    resetGem(); resetCatalogue();
+    const chain = llm.CHAT_MODELS;
+    let status = await llm.modelCatalogueStatus([...chain, "gemini-made-up-retired"]);
     assert(status.reachable, "catalogue mock is up but reported unreachable");
-    assert(status.dead.length === 1 && status.dead[0] === "made-up/retired-slug", `dead list wrong: ${status.dead.join(",")}`);
+    assert(status.dead.length === 1 && status.dead[0] === "gemini-made-up-retired", `dead list wrong: ${status.dead.join(",")}`);
     assert(status.live.length === chain.length, `live list wrong: ${status.live.length}/${chain.length}`);
-    // Now kill the catalogue endpoint and confirm the honest "unreachable" verdict.
-    const savedBase = process.env.OPENROUTER_API_BASE;
-    process.env.OPENROUTER_API_BASE = "http://127.0.0.1:1";
-    status = await openrouter.modelCatalogueStatus(chain);
-    process.env.OPENROUTER_API_BASE = savedBase;
+    const savedBase = process.env.GEMINI_API_BASE;
+    process.env.GEMINI_API_BASE = "http://127.0.0.1:1";
+    status = await llm.modelCatalogueStatus(chain);
+    process.env.GEMINI_API_BASE = savedBase;
     resetCatalogue();
     assert(status.reachable === false && status.live.length === 0, "an unreachable catalogue was reported as verified live");
     return "verified vs unverifiable states are distinct";
   });
 
   await checkAsync("catalogue unreachable degrades to the static chain (never blocks chat)", async () => {
-    resetOR();
-    // point the base at a dead port for the catalogue fetch only, then restore
-    const savedBase = process.env.OPENROUTER_API_BASE;
-    const dead = await startServer(() => {});
-    await new Promise((r) => dead.server.close(r)); // occupied then released → connection refused
-    process.env.OPENROUTER_API_BASE = `http://127.0.0.1:1`;
-    openrouter.resetModelCatalogue();
-    const live = await openrouter.liveModels(["openai/gpt-4.1-mini", "made-up/dead-slug"]);
-    process.env.OPENROUTER_API_BASE = savedBase;
-    openrouter.resetModelCatalogue();
+    resetGem();
+    const savedBase = process.env.GEMINI_API_BASE;
+    process.env.GEMINI_API_BASE = "http://127.0.0.1:1";
+    llm.resetModelCatalogue();
+    const live = await llm.liveModels(["gemini-2.5-flash", "gemini-made-up-slug"]);
+    process.env.GEMINI_API_BASE = savedBase;
+    llm.resetModelCatalogue();
     assert(live.length === 2, "catalogue outage filtered the static chain");
     return "catalogue down → chain used unfiltered";
   });
 
   /* ----------------- Layer 3: Gemini engine forensics ----------------- */
-  console.log("\n■ Layer 3 · Gemini engine forensics (vision + research + image)");
+  console.log("\n■ Layer 3 · Gemini client forensics (vision + research helpers)");
 
   await checkAsync("geminiComplete sends a well-formed generateContent request", async () => {
+    resetGem(); resetCatalogue();
     GEM.respond = (model, body) => geminiText(`HELLO_FROM_${model}`);
     const r = await geminiLib.geminiComplete({ messages: [{ role: "system", content: "be brief" }, { role: "user", content: "hi" }] });
     assert(r.text === "HELLO_FROM_gemini-2.5-flash", r.text);
@@ -541,7 +659,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("quota on one Gemini model rotates to the next and says so", async () => {
-    GEM.calls.length = 0;
+    resetGem(); resetCatalogue();
     GEM.respond = (model) => (model === "gemini-2.5-flash" ? geminiError(429, "Resource has been exhausted (e.g. check quota).") : geminiText(`FROM_${model}`));
     const r = await geminiLib.geminiComplete({ messages: [{ role: "user", content: "hi" }] });
     assert(r.text === "FROM_gemini-2.5-pro", `rotation failed: ${r.text}`);
@@ -550,6 +668,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("a bad Gemini key is an auth error, not a mystery", async () => {
+    resetGem(); resetCatalogue();
     GEM.respond = () => geminiError(403, "API key not valid. Please pass a valid API key.");
     let msg = "";
     try {
@@ -563,7 +682,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("thinking starvation (MAX_TOKENS, no text) recovers on the retry", async () => {
-    GEM.calls.length = 0;
+    resetGem(); resetCatalogue();
     let n = 0;
     GEM.respond = (model) => {
       if (model === "gemini-2.5-flash") {
@@ -583,7 +702,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("geminiVision carries images AND PDFs as inlineData parts", async () => {
-    GEM.calls.length = 0;
+    resetGem(); resetCatalogue();
     GEM.respond = (model, body) => {
       const parts = body.contents?.[0]?.parts || [];
       const hasImg = parts.some((p) => p.inlineData?.mimeType === "image/png");
@@ -600,6 +719,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("hidden thinking parts are never returned as the answer", async () => {
+    resetGem(); resetCatalogue();
     GEM.respond = () => ({
       status: 200,
       json: { candidates: [{ content: { parts: [{ text: "SECRET_CHAIN_OF_THOUGHT", thought: true }, { text: "VISIBLE_ANSWER" }] }, finishReason: "STOP" }] },
@@ -610,12 +730,12 @@ function buildTestPdf() {
   });
 
   /* ----------------- Layer 4: vision pipeline forensics ----------------- */
-  console.log("\n■ Layer 4 · vision pipeline forensics (Gemini-only contract)");
+  console.log("\n■ Layer 4 · vision pipeline forensics (single-engine contract)");
 
   const workbookPdf = fs.readFileSync(path.join(ROOT, "One Health Pandemic Forecasting Workbook - Phase 2 (1)(1).pdf"));
 
-  await checkAsync("vision_read: attachment → Gemini engine, ZERO OpenRouter calls", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("vision_read: attachment → Gemini engine reads the real PDF", async () => {
+    resetGem(); resetCatalogue();
     GEM.calls.length = 0;
     GEM.respond = () => geminiText("The document is the Phase 2 forecasting workbook, module list follows.");
     const out = await toolsLib.runTool(
@@ -625,12 +745,11 @@ function buildTestPdf() {
     );
     assert(out.ok, `vision_read failed: ${out.output.slice(0, 200)}`);
     assert(/VISION \(Gemini ·/.test(out.output), `engine not labelled Gemini: ${out.output.slice(0, 80)}`);
-    zeroOR("vision_read success");
-    return "PDF read by Gemini; OpenRouter untouched";
+    return "PDF read by Gemini";
   });
 
-  await checkAsync("vision_read: Gemini outage → LOUD refusal, still ZERO OpenRouter calls", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("vision_read: Gemini outage → LOUD refusal, never a blind answer", async () => {
+    resetGem(); resetCatalogue();
     const saved = GEM.respond;
     GEM.respond = () => geminiError(500, "internal error");
     const out = await toolsLib.runTool(
@@ -641,12 +760,11 @@ function buildTestPdf() {
     GEM.respond = saved;
     assert(!out.ok, "vision_read did not fail on a Gemini outage");
     assert(/VISION FAILED/.test(out.output) && /NOT read/i.test(out.output), `refusal not loud: ${out.output.slice(0, 120)}`);
-    zeroOR("vision_read outage");
     return "engine down → loud refusal, no provider switching";
   });
 
-  await checkAsync("Vision Lab (analyzeUploads): success path is Gemini-only", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("Vision Lab (analyzeUploads): success path runs on the Gemini engine", async () => {
+    resetGem(); resetCatalogue();
     GEM.calls.length = 0;
     GEM.respond = () => geminiText("Structured analysis from the Gemini engine.");
     const pdfFile = new File([buildTestPdf()], "test.pdf", { type: "application/pdf" });
@@ -654,29 +772,27 @@ function buildTestPdf() {
     assert(r.model.startsWith("gemini:"), `wrong engine: ${r.model}`);
     assert(r.analysis.includes("Structured analysis"), r.analysis.slice(0, 100));
     assert(r.extracted[0].text.includes("Flate stream line: malaria cases 1204"), `PDF text layer not extracted: ${r.extracted[0].text.slice(0, 120)}`);
-    zeroOR("analyzeUploads");
     return "PDF text layer extracted locally + vision read by Gemini";
   });
 
-  await checkAsync("Vision Lab without a Gemini key explains the contract, never switches provider", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("Vision Lab without a Gemini key explains the contract, never invents a reading", async () => {
+    resetGem(); resetCatalogue();
     const savedKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
     try {
       const pdfFile = new File([buildTestPdf()], "test.pdf", { type: "application/pdf" });
       const r = await analyzeLib.analyzeUploads({ files: [pdfFile], prompt: "read this", kind: "document" });
       assert(r.model === "no-vision-key", `model=${r.model}`);
-      assert(/GEMINI_API_KEY/.test(r.analysis) && /never used to see files/i.test(r.analysis), "the no-key message does not state the contract");
+      assert(/GEMINI_API_KEY/.test(r.analysis) && /single key/i.test(r.analysis), "the no-key message does not state the contract");
       assert(/Plain stream line: IDSR weekly report/.test(r.analysis), "local extracts not included in the no-key answer");
-      zeroOR("analyzeUploads no-key");
-      return "no key → contract explained + local extracts, OpenRouter untouched";
+      return "no key → contract explained + local extracts";
     } finally {
       process.env.GEMINI_API_KEY = savedKey;
     }
   });
 
   await checkAsync("Vision Lab survives a Gemini outage with a labelled degrade", async () => {
-    resetOR(); resetCatalogue();
+    resetGem(); resetCatalogue();
     const savedKey = process.env.GEMINI_API_KEY;
     const saved = GEM.respond;
     GEM.respond = () => geminiError(500, "backend error");
@@ -686,15 +802,14 @@ function buildTestPdf() {
     assert(savedKey);
     assert(/Gemini vision read failed/.test(r.analysis), `outage not labelled: ${r.analysis.slice(0, 120)}`);
     assert(/NOT read by any model/i.test(r.analysis), "the answer may pose as a reading");
-    zeroOR("analyzeUploads outage");
     return "outage → labelled failure + local extracts";
   });
 
   /* ----------------- Layer 5: deep research forensics ----------------- */
-  console.log("\n■ Layer 5 · deep research forensics (Gemini-only contract)");
+  console.log("\n■ Layer 5 · deep research forensics (single-engine contract)");
 
-  await checkAsync("deep research: decompose + synthesis on Gemini, ZERO OpenRouter calls", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("deep research: decompose + synthesis both run on Gemini", async () => {
+    resetGem(); resetCatalogue();
     GEM.calls.length = 0;
     let decomposeDone = false;
     GEM.respond = (model, body) => {
@@ -721,15 +836,14 @@ function buildTestPdf() {
       assert(/## Answer/.test(report.markdown), "synthesis missing");
       assert(/Synthesised by Gemini/.test(report.markdown), "engine not named in the brief");
       assert(report.citations.length > 0, "no citations returned");
-      zeroOR("deep research");
-      return "2 Gemini calls (decompose + synthesis); OpenRouter untouched";
+      return "2 Gemini calls (decompose + synthesis)";
     } finally {
       global.fetch = realFetch;
     }
   });
 
-  await checkAsync("deep research without a Gemini key degrades offline, never to OpenRouter", async () => {
-    resetOR(); resetCatalogue();
+  await checkAsync("deep research without a Gemini key degrades offline, never invents an answer", async () => {
+    resetGem(); resetCatalogue();
     const savedKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
     const realFetch = global.fetch;
@@ -741,8 +855,7 @@ function buildTestPdf() {
       const report = await researchLib.deepResearch({ question: "cholera in Accra?", focus: "" });
       assert(/engine offline/.test(report.markdown), "offline state not labelled");
       assert(/GEMINI_API_KEY/.test(report.markdown), "the brief does not tell the user which key to add");
-      zeroOR("deep research offline");
-      return "offline brief with live sources; OpenRouter untouched";
+      return "offline brief with live sources";
     } finally {
       global.fetch = realFetch;
       process.env.GEMINI_API_KEY = savedKey;
@@ -750,7 +863,7 @@ function buildTestPdf() {
   });
 
   await checkAsync("deep research survives a Gemini synthesis outage with a raw digest", async () => {
-    resetOR(); resetCatalogue();
+    resetGem(); resetCatalogue();
     const saved = GEM.respond;
     GEM.respond = (model, body) => {
       const prompt = JSON.stringify(body);
@@ -766,7 +879,6 @@ function buildTestPdf() {
       const report = await researchLib.deepResearch({ question: "mpox Ghana?", focus: "" });
       assert(/synthesis engine failed/.test(report.markdown), "outage not labelled");
       assert(/raw/i.test(report.markdown), "no raw digest on outage");
-      zeroOR("deep research outage");
       return "outage → labelled raw source digest";
     } finally {
       global.fetch = realFetch;
@@ -823,7 +935,6 @@ function buildTestPdf() {
   });
 
   /* ----------------- shutdown + verdict ----------------- */
-  await new Promise((r) => orHttp.server.close(r));
   await new Promise((r) => gemHttp.server.close(r));
 
   console.log("\n────────────────────────────────────────────────────────────────");

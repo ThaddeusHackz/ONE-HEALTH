@@ -14,7 +14,7 @@ export default function HomePage() {
     { href: "/forecast", title: "4-week ensemble forecast", body: "Naive, seasonal naive, Holt, ridge and leakage-safe random forest - then an interval, not a single number." },
     { href: "/surveillance", title: "IDSR-style early warning", body: "Z-score watches against an eight-week baseline. An alert starts an investigation; it never ends one." },
     { href: "/vision", title: "Vision on any file", body: "PDF, Word, Excel, CSV, photos, scans. Multi-model vision extracts Ghana fields and flags identifiers." },
-    { href: "/intelligence", title: "Voice + web intelligence", body: "Speak a briefing. Search WHO, GHS and NADMO sources. OpenRouter falls back when one model is exhausted." },
+    { href: "/intelligence", title: "Voice + web intelligence", body: "Speak a briefing. Search WHO, GHS and NADMO sources. The Gemini chain falls back when one model is exhausted." },
   ];
 
   return (
@@ -122,7 +122,7 @@ export default function HomePage() {
         })}
         <Link href="/extracts" className="group rounded-[28px] border border-line bg-white p-6 shadow-card">
           <h3 className="font-display text-2xl">DHIMS2 / IDSR extracts</h3>
-          <p className="mt-2 text-sm leading-6 text-muted">Load official weekly CSVs. Quality log, completeness, OpenRouter review, then the forecast desk uses that series.</p>
+          <p className="mt-2 text-sm leading-6 text-muted">Load official weekly CSVs. Quality log, completeness, Gemini review, then the forecast desk uses that series.</p>
         </Link>
         <Link href="/field" className="group rounded-[28px] border border-line bg-white p-6 shadow-card">
           <h3 className="font-display text-2xl">Spoken field brief</h3>

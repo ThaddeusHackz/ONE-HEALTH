@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
-import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { completeWithSystem, geminiConfigured } from "@/lib/llm";
 import { districtById } from "@/lib/districts";
 import { findOfficialSeries, recordAudit, saveDB, uid } from "@/lib/store";
 import { languageInstruction } from "@/lib/languages";
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
 
   let briefing = "";
   let model = "local-ensemble";
-  if (body.brief && openRouterConfigured()) {
+  if (body.brief && geminiConfigured()) {
     try {
       const r = await completeWithSystem({
         extraSystem: `Write a 180-word Ghana Health Service briefing. Use only the numbers provided. State uncertainty. End with 3 investigation actions. ${languageInstruction(body.language)}`,

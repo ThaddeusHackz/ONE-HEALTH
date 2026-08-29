@@ -91,7 +91,7 @@ function assert(cond, message) {
   const tools = require(path.join(compiled, "agent/tools.js"));
   const memory = require(path.join(compiled, "agent/memory.js"));
   const { getDB } = require(path.join(compiled, "store.js"));
-  const openrouter = require(path.join(compiled, "openrouter.js"));
+  const llm = require(path.join(compiled, "llm.js"));
 
   const ctx = { images: [], docs: [], attachmentNotes: [], mode: "chat" };
   const call = (name, args) => tools.runTool(name, args, ctx);
@@ -374,32 +374,35 @@ function assert(cond, message) {
     return "inlineData + inline_data + blocked-prompt all parsed";
   });
 
-  check("images: nothing in the codebase calls the OpenRouter image API", () => {
+  check("engine: not one OpenRouter reference survives anywhere in the product", () => {
     const offenders = [];
     const walk = (dir) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(full);
-        else if (/\.(ts|tsx|yaml|example)$/.test(entry.name)) {
+        else if (/\.(ts|tsx)$/.test(entry.name)) {
+          const rel = path.relative(ROOT, full);
+          // lib/env.ts keeps ONE deliberate mention: the sk-or guard.
+          if (rel === "lib/env.ts") continue;
           const text = fs.readFileSync(full, "utf8");
-          if (/openrouter\.ai\/api\/v1\/images/.test(text) || /OPENROUTER_IMAGE_MODELS/.test(text)) {
-            offenders.push(path.relative(ROOT, full));
-          }
+          if (/openrouter/i.test(text)) offenders.push(rel);
         }
       }
     };
     walk(path.join(ROOT, "lib"));
     walk(path.join(ROOT, "app"));
     walk(path.join(ROOT, "components"));
-    offenders.push(...[/OPENROUTER_IMAGE_MODELS/.test(fs.readFileSync(path.join(ROOT, "render.yaml"), "utf8")) ? "render.yaml" : ""]);
-    offenders.push(...[/OPENROUTER_IMAGE_MODELS/.test(fs.readFileSync(path.join(ROOT, ".env.example"), "utf8")) ? ".env.example" : ""]);
-    const real = offenders.filter(Boolean);
-    assert(real.length === 0, `still referenced in: ${real.join(", ")}`);
-    return "image generation is Gemini-only";
+    for (const f of ["render.yaml", ".env.example"]) {
+      if (/OPENROUTER/i.test(fs.readFileSync(path.join(ROOT, f), "utf8"))) offenders.push(f);
+    }
+    if (fs.existsSync(path.join(ROOT, "lib/openrouter.ts"))) offenders.push("lib/openrouter.ts");
+    if (fs.existsSync(path.join(ROOT, "lib/or-review.ts"))) offenders.push("lib/or-review.ts");
+    assert(offenders.length === 0, `still referenced in: ${offenders.join(", ")}`);
+    return "one engine, one key: GEMINI_API_KEY";
   });
 
-  check("images: the Gemini key resolver refuses an OpenRouter key", () => {
+  check("images: the Gemini key resolver refuses a legacy sk-or key", () => {
     const envSrc = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
     assert(/GEMINI_API_KEY/.test(envSrc), "no GEMINI_API_KEY alias");
     assert(/sk-or-/.test(envSrc) && /geminiKey/.test(envSrc), "missing sk-or guard on geminiKey");
@@ -414,13 +417,13 @@ function assert(cond, message) {
 
   const gemini = require(path.join(compiled, "agent/gemini.js"));
 
-  check("gemini: client exists, is key-gated and refuses an OpenRouter key", () => {
+  check("gemini: client exists, is key-gated and refuses a legacy sk-or key", () => {
     assert(typeof gemini.geminiComplete === "function", "geminiComplete missing");
     assert(typeof gemini.geminiConfigured === "function", "geminiConfigured missing");
     assert(gemini.GEMINI_MODEL_CHAIN.length > 1, "no model chain");
     assert(gemini.geminiConfigured() === false, "should be unconfigured without a key");
     const src = fs.readFileSync(path.join(ROOT, "lib/env.ts"), "utf8");
-    assert(/sk-or-/.test(src) && /geminiKey/.test(src), "geminiKey must reject an OpenRouter key");
+    assert(/sk-or-/.test(src) && /geminiKey/.test(src), "geminiKey must reject a legacy sk-or key");
     return `${gemini.GEMINI_MODEL_CHAIN.length} models; sk-or guard intact`;
   });
 
@@ -446,7 +449,7 @@ function assert(cond, message) {
   });
 
   check("gemini: message conversion is safe for the shapes the agent actually sends", () => {
-    const src = fs.readFileSync(path.join(ROOT, "lib/agent/gemini.ts"), "utf8");
+    const src = fs.readFileSync(path.join(ROOT, "lib/llm.ts"), "utf8");
     assert(/systemInstruction/.test(src), "system prompt is not mapped");
     assert(/contents\[0\]\.role === "model"/.test(src), "a leading model turn is not dropped");
     assert(/last\.role === role/.test(src), "consecutive same-role turns are not merged");
@@ -459,31 +462,31 @@ function assert(cond, message) {
     return "system/role/inlineData handled; no image modality in code";
   });
 
-  check("vision: runs on Gemini ONLY - the OpenRouter key is never used to see a file", () => {
+  check("vision: every file read goes through the Gemini vision engine", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
     assert(/geminiVision\(\{/.test(src), "vision_read does not call the Gemini vision engine");
     assert(/catch \(geminiErr\)/.test(src), "a Gemini failure is not caught and handled");
-    assert(!/visionAnalyze/.test(src), "vision_read still routes to OpenRouter vision");
+    assert(!/visionAnalyze/.test(src), "vision_read still routes to a legacy vision path");
     assert(/VISION \(Gemini ·/.test(src), "the answer does not name the Gemini engine");
-    assert(/never on the OpenRouter key/.test(src), "the no-key refusal does not explain the contract");
+    assert(/GEMINI_API_KEY/.test(src), "the no-key refusal does not name the key to add");
     const analyze = fs.readFileSync(path.join(ROOT, "lib/analyze.ts"), "utf8");
-    assert(!/visionAnalyze/.test(analyze), "analyzeUploads still has an OpenRouter vision path");
+    assert(!/visionAnalyze/.test(analyze), "analyzeUploads still has a legacy vision path");
     assert(/geminiVision\(\{/.test(analyze), "analyzeUploads is not Gemini-driven");
-    const or = fs.readFileSync(path.join(ROOT, "lib/openrouter.ts"), "utf8");
-    assert(!/visionAnalyze/.test(or), "openrouter.ts still exports a vision function");
-    assert(!/VISION_MODELS/.test(or), "openrouter.ts still ships a vision model chain");
-    return "vision_read + ingest + Vision Lab are Gemini-only; no OpenRouter vision path exists";
+    const engine = fs.readFileSync(path.join(ROOT, "lib/llm.ts"), "utf8");
+    assert(!/visionAnalyze/.test(engine), "the engine still exports a legacy vision function");
+    assert(!/VISION_MODELS/.test(engine), "the engine still ships a legacy vision model chain");
+    return "vision_read + ingest + Vision Lab all run on the one Gemini engine";
   });
 
-  check("research: decompose and synthesis run on Gemini ONLY - never OpenRouter", () => {
+  check("research: decompose and synthesis both run on the Gemini engine", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
     const calls = (src.match(/geminiComplete\(/g) || []).length;
     assert(calls >= 2, `expected decompose + synthesis on Gemini, found ${calls} call(s)`);
     assert(/Synthesised by \$\{engine\}/.test(src), "the brief does not name its engine");
     const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    assert(!/openrouter/i.test(codeOnly), "deep research still references OpenRouter in code");
+    assert(!/openrouter/i.test(codeOnly), "deep research still references the old gateway in code");
     assert(/engine offline/.test(src), "a missing Gemini key is not an explicit offline state");
-    return `${calls} Gemini calls; engine named; zero OpenRouter references`;
+    return `${calls} Gemini calls; engine named in the brief`;
   });
 
   check("models: a pinned model is singular, then auto-resets on exhausted credit", () => {
@@ -508,8 +511,8 @@ function assert(cond, message) {
     // contract instead of a degraded flag on a fallback chain.
     const toolsSrc = fs.readFileSync(path.join(ROOT, "lib/agent/tools.ts"), "utf8");
     assert(/VISION FAILED - the attachment was NOT read/.test(toolsSrc), "vision_read does not fail loudly");
-    assert(!/visionAnalyze/.test(toolsSrc), "a blind OpenRouter fallback path still exists");
-    const geminiSrc = fs.readFileSync(path.join(ROOT, "lib/agent/gemini.ts"), "utf8");
+    assert(!/visionAnalyze/.test(toolsSrc), "a blind legacy fallback path still exists");
+    const geminiSrc = fs.readFileSync(path.join(ROOT, "lib/llm.ts"), "utf8");
     assert(/returned no text/.test(geminiSrc), "an empty Gemini candidate can silently pass as an answer");
     // The real executor, with no attachments, must still refuse outright.
     const out = await call("vision_read", { question: "what does the photo show?" });
@@ -696,79 +699,132 @@ function assert(cond, message) {
     return "compress:false + X-Accel-Buffering:no";
   });
 
-  /* ----------------------------- openrouter ---------------------------- */
-  check("openrouter: model chain is chunked at the 3-slug API limit", () => {
-    assert(openrouter.MAX_MODELS_PER_REQUEST === 3, "limit changed");
-    const groups = openrouter.fallbackGroups();
-    assert(groups.every((g) => g.length <= 3), "a group exceeds 3 slugs");
-    assert(groups.length > 3, `only ${groups.length} groups`);
-    return `${groups.length} groups covering ${groups.flat().length} models`;
+  /* ------------------------------- engine ------------------------------ */
+  check("engine: the Gemini chain is walked one model per request", () => {
+    assert(llm.MAX_MODELS_PER_REQUEST === 1, "the Gemini API takes exactly one model per request");
+    const groups = llm.fallbackGroups();
+    assert(groups.every((g) => g.length === 1), "a group carries more than one slug");
+    assert(groups.length >= 6, `chain too thin: ${groups.length}`);
+    assert(groups.flat().every((m) => !m.includes("/")), "a gateway-style slug leaked into the chain");
+    return `${groups.length} models, one per request`;
   });
 
-  check("openrouter: streaming + tool-calling entrypoint is exported", () => {
-    assert(typeof openrouter.completeStream === "function", "completeStream missing");
-    const spec = { type: "function", function: { name: "x", description: "d", parameters: {} } };
-    assert(spec.type === "function");
-    return "completeStream";
+  check("engine: streaming + tool-calling entrypoint is exported", () => {
+    assert(typeof llm.completeStream === "function", "completeStream missing");
+    assert(typeof llm.complete === "function", "complete missing");
+    assert(typeof llm.completeWithSystem === "function", "completeWithSystem missing");
+    return "complete + completeStream + completeWithSystem";
+  });
+
+  check("engine: tool schemas are sanitised into Gemini's dialect", () => {
+    const cleaned = llm.sanitizeSchema({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "OBJECT",
+      additionalProperties: false,
+      properties: { n: { type: "number", exclusiveMinimum: 0 } },
+    });
+    assert(cleaned.$schema === undefined && cleaned.additionalProperties === undefined, "unsupported keywords survived");
+    assert(cleaned.properties.n.exclusiveMinimum === undefined, "exclusiveMinimum survived");
+    assert(cleaned.type === "object", "type not normalised to lower case");
+    const empty = llm.sanitizeSchema({ type: "object" });
+    assert(empty.properties && typeof empty.properties === "object", "object schema without properties not repaired");
+    return "draft-07 keywords stripped, object schemas repaired";
+  });
+
+  check("engine: the message transcript maps onto Gemini contents", () => {
+    const { system, contents } = llm.toGeminiContents([
+      { role: "system", content: "be brief" },
+      { role: "assistant", content: "ignored leading model turn" },
+      { role: "user", content: "hi" },
+      { role: "user", content: "again" },
+      { role: "assistant", content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "t", arguments: '{"a":1}' } }] },
+      { role: "tool", tool_call_id: "c1", content: "result" },
+    ]);
+    assert(system === "be brief", `system prompt lost: ${system}`);
+    assert(contents[0].role === "user", "a leading model turn was not dropped");
+    assert(contents[0].parts.length === 2, "consecutive same-role turns were not merged");
+    const call = contents.find((c) => (c.parts || []).some((p) => p.functionCall));
+    const resp = contents.find((c) => (c.parts || []).some((p) => p.functionResponse));
+    assert(call && call.role === "model", "the tool call is not a model turn");
+    assert(resp && resp.role === "user", "the tool result is not a user turn");
+    assert(resp.parts[0].functionResponse.name === "t", "the tool result lost its function name");
+    return "system + merge + functionCall/functionResponse round trip";
+  });
+
+  check("engine: the error taxonomy tells auth, quota and transience apart", () => {
+    assert(llm.isFatalAuth(400, "API key not valid. Please pass a valid API key."), "invalid key not read as auth");
+    assert(llm.isFatalAuth(401, "unauthorized"), "401 not read as auth");
+    assert(!llm.isFatalAuth(429, "Resource has been exhausted"), "quota misread as auth");
+    assert(llm.isCreditError(429, "Resource has been exhausted (e.g. check quota)."), "429 not read as quota");
+    assert(llm.isQuotaError(0, "You exceeded your current quota"), "quota text missed");
+    assert(llm.isTransient(503, "backend overloaded"), "5xx not transient");
+    assert(!llm.isTransient(400, "invalid argument"), "400 misread as transient");
+    return "auth → stop, quota → next model, 5xx → retry";
   });
 
   /* -------------------- pinned-model routing (live, stubbed HTTP) --------------------- */
 
   const uploads = require(path.join(compiled, "agent/uploads.js"));
 
-  function sseResponse(model, text) {
+  /** One SSE stream of Gemini candidate chunks. */
+  function sseResponse(text) {
     const payload = [
-      `data: ${JSON.stringify({ model, choices: [{ delta: { content: text } }] })}`,
-      `data: ${JSON.stringify({ model, choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] })}`,
       "data: [DONE]",
     ].join("\n\n");
     return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
   }
 
-  await checkAsync("pinned: the request carries exactly one slug - no chain, no substitution", async () => {
+  /** The model slug from a Gemini REST URL. */
+  function modelFromUrl(url) {
+    const m = /\/models\/([^:]+):/.exec(String(url));
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  await checkAsync("pinned: the request goes to exactly one model - no chain, no substitution", async () => {
     const calls = [];
     const realFetch = global.fetch;
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    process.env.GEMINI_API_KEY = "AIza-selftest-not-real-0001";
     global.fetch = async (url, init) => {
-      calls.push({ url: String(url), body: JSON.parse(init.body) });
-      return sseResponse("deepseek/deepseek-chat", "pinned-ok");
+      calls.push({ url: String(url), model: modelFromUrl(url), body: JSON.parse(init.body), key: init.headers["x-goog-api-key"] });
+      return sseResponse("pinned-ok");
     };
     try {
-      const r = await openrouter.completeStream({
+      const r = await llm.completeStream({
         messages: [{ role: "user", content: "hi" }],
-        models: ["deepseek/deepseek-chat"],
+        models: ["gemini-2.5-pro"],
         pinned: true,
         onDelta: () => {},
       });
       assert(calls.length === 1, `expected exactly one HTTP call, saw ${calls.length}`);
-      const body = calls[0].body;
-      assert(body.model === "deepseek/deepseek-chat", `body.model is ${body.model}`);
-      assert(!Array.isArray(body.models), `a pinned request must not carry a models array, got ${JSON.stringify(body.models)}`);
-      assert(/deepseek/.test(r.model), `answered model was ${r.model}`);
-      return `one call · model=${body.model} · answered=${r.model}`;
+      assert(calls[0].model === "gemini-2.5-pro", `called ${calls[0].model}`);
+      assert(calls[0].key === "AIza-selftest-not-real-0001", "the key was not sent as x-goog-api-key");
+      assert(/streamGenerateContent/.test(calls[0].url), "streaming did not use the SSE route");
+      assert(r.text === "pinned-ok", r.text);
+      return `one call · model=${calls[0].model}`;
     } finally {
       global.fetch = realFetch;
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 
-  await checkAsync("pinned: a dead slug fails LOUDLY instead of silently answering from gpt-4.1-mini", async () => {
+  await checkAsync("pinned: a dead slug fails LOUDLY instead of silently answering from 2.5 Flash", async () => {
     const realFetch = global.fetch;
     const attempted = [];
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
-    global.fetch = async (url, init) => {
-      const body = JSON.parse(init.body);
-      attempted.push(body.model || (body.models || []).join("+"));
-      return new Response(JSON.stringify({ error: { message: `No allowed providers are available for ${body.model}` } }), {
+    process.env.GEMINI_API_KEY = "AIza-selftest-not-real-0002";
+    global.fetch = async (url) => {
+      const model = modelFromUrl(url);
+      attempted.push(model);
+      return new Response(JSON.stringify({ error: { message: `models/${model} is not found for API version v1beta` } }), {
         status: 404,
       });
     };
     try {
       let threw = "";
       try {
-        await openrouter.completeStream({
+        await llm.completeStream({
           messages: [{ role: "user", content: "hi" }],
-          models: ["meta-llama/llama-3.3-70b-instruct:free"],
+          models: ["gemini-1.5-flash"],
           pinned: true,
           onDelta: () => {},
         });
@@ -777,46 +833,46 @@ function assert(cond, message) {
       }
       assert(threw.includes("could not complete"), `expected a loud failure, got: ${threw.slice(0, 120)}`);
       assert(
-        attempted.length > 0 && attempted.every((m) => m === "meta-llama/llama-3.3-70b-instruct:free"),
+        attempted.length > 0 && attempted.every((m) => m === "gemini-1.5-flash"),
         `the pinned slug must be the only one tried, saw: ${attempted.join(", ") || "none"}`,
       );
       return `failed loudly after ${attempted.length} same-slug attempt(s); never touched the Auto chain`;
     } finally {
       global.fetch = realFetch;
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 
   await checkAsync("pinned: a tools rejection retries the SAME model without tools", async () => {
     const realFetch = global.fetch;
     const seen = [];
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    process.env.GEMINI_API_KEY = "AIza-selftest-not-real-0003";
     global.fetch = async (url, init) => {
       const body = JSON.parse(init.body);
-      seen.push({ model: body.model, hasTools: Array.isArray(body.tools) });
+      seen.push({ model: modelFromUrl(url), hasTools: Array.isArray(body.tools) });
       if (body.tools) {
-        return new Response(JSON.stringify({ error: { message: "This model does not support tool calling" } }), {
+        return new Response(JSON.stringify({ error: { message: "Function calling is not enabled for this model" } }), {
           status: 400,
         });
       }
-      return sseResponse(body.model, "tools-free-ok");
+      return sseResponse("tools-free-ok");
     };
     try {
-      const r = await openrouter.completeStream({
+      const r = await llm.completeStream({
         messages: [{ role: "user", content: "hi" }],
-        models: ["deepseek/deepseek-r1"],
+        models: ["gemini-2.5-pro"],
         pinned: true,
-        tools: [{ type: "function", function: { name: "t", description: "d", parameters: {} } }],
+        tools: [{ type: "function", function: { name: "t", description: "d", parameters: { type: "object", properties: {} } } }],
         onDelta: () => {},
       });
       assert(seen.length === 2, `expected tools then no-tools on the same slug, saw ${seen.length}`);
-      assert(seen.every((s) => s.model === "deepseek/deepseek-r1"), "a different slug was tried");
+      assert(seen.every((x) => x.model === "gemini-2.5-pro"), "a different slug was tried");
       assert(seen[0].hasTools && !seen[1].hasTools, "the retry did not drop tools");
       assert(/tools-free-ok/.test(r.text), r.text);
       return "same slug retried tool-free and answered";
     } finally {
       global.fetch = realFetch;
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 
@@ -929,43 +985,38 @@ function assert(cond, message) {
     const page = fs.readFileSync(path.join(ROOT, "app/agent/page.tsx"), "utf8");
     const models = fs.readFileSync(path.join(ROOT, "lib/agent/models.ts"), "utf8");
     const expected = [
-      "openai/gpt-4.1-mini",
-      "google/gemini-2.5-flash",
-      "openai/gpt-4o",
-      "google/gemini-2.5-pro",
-      "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-sonnet-4",
-      "deepseek/deepseek-v3.2",
-      "deepseek/deepseek-chat",
-      "mistralai/mistral-large-2512",
-      "mistralai/mistral-nemo",
-      "meta-llama/llama-3.3-70b-instruct",
-      "google/gemma-4-31b-it:free",
+      "gemini-2.5-flash",
+      "gemini-2.5-pro",
+      "gemini-2.5-flash-lite",
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+      "gemini-flash-latest",
+      "gemma-3-27b-it",
     ];
     for (const slug of expected) assert(models.includes(slug), `${slug} missing from the catalogue`);
     assert(/PINNABLE_MODELS/.test(page), "the dropdown does not render from the catalogue");
-    // Retired slugs must not ship anywhere in the product.
+    // Retired Gemini models and every gateway-style slug must not ship anywhere.
+    const arrayOnly = models.slice(models.indexOf("export const PINNABLE_MODELS"), models.indexOf("export const PINNABLE_SLUGS"));
     for (const dead of [
-      "anthropic/claude-3.5-sonnet",
-      "mistralai/mistral-large-2411",
-      "meta-llama/llama-3.3-70b-instruct:free",
-      "google/gemma-3-27b-it:free",
-      "qwen/qwen-2.5-72b-instruct:free",
-      "mistralai/mistral-7b-instruct:free",
-      "nousresearch/hermes-3-llama-3.1-405b:free",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+      "gemini-1.0-pro",
+      "openai/gpt-4.1-mini",
+      "anthropic/claude-sonnet-4.6",
+      "google/gemini-2.5-flash",
+      "openrouter/auto",
     ]) {
-      const arrayOnly = models.slice(models.indexOf("export const PINNABLE_MODELS"), models.indexOf("export const PINNABLE_SLUGS"));
       assert(!arrayOnly.includes(dead), `retired slug ${dead} still offered in the dropdown`);
     }
     return `${expected.length} live slugs present, retired slugs purged`;
   });
 
-  check("deep research: a Gemini outage degrades to a raw digest, never another provider", () => {
+  check("deep research: a Gemini outage degrades to a raw digest, never an invented answer", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib/agent/deep-research.ts"), "utf8");
     assert(/catch \(geminiErr\)/.test(src), "a Gemini failure would kill the whole research run");
     assert(/raw digest|raw, unsynthesised/.test(src), "an engine outage is not a labelled, deterministic degrade");
-    assert(!/from "@\/lib\/openrouter"/.test(src), "deep research still imports OpenRouter");
-    return "Gemini-only: outage → labelled raw source digest, zero provider switching";
+    assert(!/lib\/openrouter/.test(src), "deep research still imports the retired gateway client");
+    return "single engine: outage → labelled raw source digest, never a silent answer";
   });
 
   check("run: attachments ride through vision_read instead of blind inline parts", () => {
@@ -993,7 +1044,6 @@ function assert(cond, message) {
   await checkAsync("vision pipeline: an attachment reaches the Gemini engine through the agent loop", async () => {
     const run = require(path.join(compiled, "agent/run.js"));
     const realFetch = global.fetch;
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
     process.env.GEMINI_API_KEY = "AIza-testkey-not-real-000002";
 
     const b64 = Buffer.from("PNGDATA-of-a-field-photo", "utf8").toString("base64");
@@ -1005,36 +1055,26 @@ function assert(cond, message) {
       bytes: 21,
     };
 
-    const geminiBodies = [];
-    let orToolCallSent = false;
+    const visionBodies = [];
+    let toolCallSent = false;
     global.fetch = async (url, init) => {
       const target = String(url);
       const body = JSON.parse(init.body);
-      if (target.includes("generativelanguage.googleapis.com")) {
-        geminiBodies.push(body);
-        return new Response(
-          JSON.stringify({ candidates: [{ content: { parts: [{ text: "GEMINI_SAW_THE_IMAGE" }] }, finishReason: "STOP" }] }),
-          { status: 200 },
-        );
-      }
-      // OpenRouter
-      if (body.stream) {
-        if (!orToolCallSent) {
-          orToolCallSent = true;
+
+      // The agent loop streams; vision_read and memory use blocking calls.
+      if (/streamGenerateContent/.test(target)) {
+        if (!toolCallSent) {
+          toolCallSent = true;
           const payload = [
             `data: ${JSON.stringify({
-              model: "openai/gpt-4.1-mini",
-              choices: [
+              candidates: [
                 {
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: 0,
-                        id: "call_vision_1",
-                        function: { name: "vision_read", arguments: JSON.stringify({ question: "What is in the attachment?" }) },
-                      },
+                  content: {
+                    parts: [
+                      { functionCall: { name: "vision_read", args: { question: "What is in the attachment?" } } },
                     ],
                   },
+                  finishReason: "STOP",
                 },
               ],
             })}`,
@@ -1043,13 +1083,25 @@ function assert(cond, message) {
           return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
         }
         const payload = [
-          `data: ${JSON.stringify({ model: "openai/gpt-4.1-mini", choices: [{ delta: { content: "FINAL: GEMINI_SAW_THE_IMAGE" } }] })}`,
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "FINAL: GEMINI_SAW_THE_IMAGE" }] }, finishReason: "STOP" }] })}`,
           "data: [DONE]",
         ].join("\n\n");
         return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
       }
-      // Background memory distillation (complete, non-stream).
-      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }] }), { status: 200 });
+
+      // Blocking generateContent: the vision read itself, or memory distillation.
+      const raw = JSON.stringify(body);
+      if (raw.includes("inlineData") || raw.includes("inline_data")) {
+        visionBodies.push(body);
+        return new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: "GEMINI_SAW_THE_IMAGE" }] }, finishReason: "STOP" }] }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"facts":[]}' }] }, finishReason: "STOP" }] }),
+        { status: 200 },
+      );
     };
 
     try {
@@ -1064,15 +1116,13 @@ function assert(cond, message) {
       const visionCall = result.toolLog.find((t) => t.name === "vision_read");
       assert(visionCall && visionCall.ok, `vision_read did not run cleanly: ${JSON.stringify(result.toolLog)}`);
       assert(/GEMINI_SAW_THE_IMAGE/.test(result.text), `final answer missed the vision result: ${result.text.slice(0, 120)}`);
-      assert(geminiBodies.length >= 1, "the Gemini engine was never called");
-      const visionBody = JSON.stringify(geminiBodies[0]);
-      assert(visionBody.includes("inlineData") || visionBody.includes("inline_data"), "no inline data part reached Gemini");
+      assert(visionBodies.length >= 1, "the Gemini vision engine was never called");
+      const visionBody = JSON.stringify(visionBodies[0]);
       assert(visionBody.includes(b64), "the attachment's bytes never reached Gemini - vision is blind");
       assert(visionBody.includes("image/png"), "mime type lost on the way to Gemini");
-      return `photo → vision_read → Gemini inlineData → cited answer (${geminiBodies.length} Gemini call(s))`;
+      return `photo → vision_read → Gemini inlineData → cited answer (${visionBodies.length} vision call(s))`;
     } finally {
       global.fetch = realFetch;
-      delete process.env.OPENROUTER_API_KEY;
       delete process.env.GEMINI_API_KEY;
     }
   });
@@ -1193,20 +1243,20 @@ function assert(cond, message) {
   await checkAsync("sandbox: multiple client calls in one step keep the transcript valid (pause → resume)", async () => {
     const run = require(path.join(compiled, "agent/run.js"));
     const realFetch = global.fetch;
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-selftest-not-real";
+    process.env.GEMINI_API_KEY = "AIza-selftest-not-real-0004";
 
     function sseToolCalls() {
       const payload = [
         `data: ${JSON.stringify({
-          model: "openai/gpt-4.1-mini",
-          choices: [
+          candidates: [
             {
-              delta: {
-                tool_calls: [
-                  { index: 0, id: "call_sb_1", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 1;" }) } },
-                  { index: 1, id: "call_sb_2", function: { name: "sandbox_exec", arguments: JSON.stringify({ language: "javascript", code: "return 2;" }) } },
+              content: {
+                parts: [
+                  { functionCall: { name: "sandbox_exec", args: { language: "javascript", code: "return 1;" } } },
+                  { functionCall: { name: "sandbox_exec", args: { language: "javascript", code: "return 2;" } } },
                 ],
               },
+              finishReason: "STOP",
             },
           ],
         })}`,
@@ -1216,20 +1266,22 @@ function assert(cond, message) {
     }
     function sseText(text) {
       const payload = [
-        `data: ${JSON.stringify({ model: "openai/gpt-4.1-mini", choices: [{ delta: { content: text } }] })}`,
+        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] })}`,
         "data: [DONE]",
       ].join("\n\n");
       return new Response(payload, { status: 200, headers: { "content-type": "text/event-stream" } });
     }
 
     let phase = 0;
-    global.fetch = async (url, init) => {
-      const body = JSON.parse(init.body);
-      if (body.stream) {
+    global.fetch = async (url) => {
+      if (/streamGenerateContent/.test(String(url))) {
         phase += 1;
         return phase === 1 ? sseToolCalls() : sseText("RESUMED_FINAL_ANSWER");
       }
-      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }] }), { status: 200 });
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"facts":[]}' }] }, finishReason: "STOP" }] }),
+        { status: 200 },
+      );
     };
 
     try {
@@ -1242,34 +1294,33 @@ function assert(cond, message) {
 
       // The FIRST client call pauses the turn…
       assert(first.pending, "no pending client call");
-      assert(first.pending.callId === "call_sb_1", `paused on the wrong call: ${first.pending.callId}`);
+      const firstId = first.pending.callId;
 
       // …and every other tool_call in the assistant message is answered, so
-      // the transcript OpenRouter receives on resume is valid.
+      // the transcript Gemini receives on resume is valid.
       const paused = first.pending.messages;
       const assistant = [...paused].reverse().find((m) => m.role === "assistant" && Array.isArray(m.tool_calls));
       assert(assistant, "paused transcript lost the assistant tool_call message");
       const ids = assistant.tool_calls.map((c) => c.id);
-      assert(ids.includes("call_sb_1") && ids.includes("call_sb_2"), `expected both calls recorded, got ${ids.join(",")}`);
+      assert(ids.length === 2, `expected both calls recorded, got ${ids.join(",")}`);
       const answered = paused.filter((m) => m.role === "tool").map((m) => m.tool_call_id);
-      assert(answered.includes("call_sb_2"), `the second call was left unanswered: ${answered.join(",")}`);
-      assert(!answered.includes("call_sb_1"), "the paused call must be answered by the resume, not inline");
-      const deferred = paused.find((m) => m.role === "tool" && m.tool_call_id === "call_sb_2");
+      assert(answered.length === 1 && answered[0] !== firstId, `the deferred call was not answered: ${answered.join(",")}`);
+      const deferred = paused.find((m) => m.role === "tool");
       assert(/deferred/i.test(String(deferred.content)), "the deferred marker is missing");
 
-      // Resume with the browser's result for call_sb_1: the turn must complete.
+      // Resume with the browser's result for the paused call: the turn must complete.
       const second = await run.runAgent({
         turns: [{ role: "user", content: "run both snippets" }],
         mode: "builder",
         allowedTools: ["sandbox_exec"],
-        resume: { messages: first.pending.messages, callId: first.pending.callId, output: "exit: 0\nstdout:\n1", priorText: "" },
+        resume: { messages: first.pending.messages, callId: firstId, output: "exit: 0\nstdout:\n1", priorText: "" },
         emit: () => {},
       });
       assert(/RESUMED_FINAL_ANSWER/.test(second.text), `resume did not complete: ${second.text.slice(0, 120)}`);
       return "two client calls → one paused, one deferred; resume completes cleanly";
     } finally {
       global.fetch = realFetch;
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 

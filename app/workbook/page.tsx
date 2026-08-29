@@ -12,7 +12,7 @@ const TOC: [string, string][] = [
   ["05", "Data that may enter the system"],
   ["06", "The statistical engine, as built"],
   ["07", "Early warning is not confirmation"],
-  ["08", "OpenRouter - one key, groups of three"],
+  ["08", "Gemini - one key, one chain"],
   ["09", "The other keys: Tavily, OpenWeather, ElevenLabs"],
   ["10", "Vision Lab - any file GHS can hold"],
   ["11", "Intelligence, voice, search"],
@@ -30,13 +30,13 @@ const TOC: [string, string][] = [
 
 const DESKS = [
   { href: "/", name: "Home", job: "National briefing surface. Pillars, signals, honest limits, Ghana flag bar." },
-  { href: "/agent", name: "AI Agent", job: "General-purpose agentic desk: reasoning, live web research, vision, image generation, an isolated code sandbox, charts, tables and long-term memory - all on the OpenRouter fallback chain." },
+  { href: "/agent", name: "AI Agent", job: "General-purpose agentic desk: reasoning, live web research, vision, image generation, an isolated code sandbox, charts, tables and long-term memory - all on the Gemini fallback chain." },
   { href: "/forecast", name: "Forecast desk", job: "Leakage-safe ensemble, 2-12 week horizon, interval not a point, official CSV overlay, delay nowcast, AI briefing." },
   { href: "/surveillance", name: "Surveillance board", job: "All 13 signals, latest count, z-score, next-week interval. Watch vs investigate." },
   { href: "/climate", name: "Climate desk", job: "Parallel OpenWeather watch-cities plus a sitrep that may mix weather, search, and the ensemble." },
   { href: "/intelligence", name: "Intelligence", job: "Ghana-locked chat, web search, voice in/out, language, live ensemble attached to the prompt." },
   { href: "/vision", name: "Vision Lab", job: "PDF, Word, Excel, CSV, photos. Local text extract + multi-model vision. Redaction first." },
-  { href: "/extracts", name: "Extracts", job: "DHIMS2 / IDSR weekly CSV. Quality log, completeness, OpenRouter review, then the forecast uses that series." },
+  { href: "/extracts", name: "Extracts", job: "DHIMS2 / IDSR weekly CSV. Quality log, completeness, Gemini review, then the forecast uses that series." },
   { href: "/field", name: "Field brief", job: "Ninety-word CHPS card in English, Twi, Ewe, Ga or Hausa. Speak it." },
   { href: "/regions", name: "Regions", job: "Sixteen official regions plus representative MMDAs. Unit of analysis is region-week." },
   { href: "/workbook", name: "This workbook", job: "The modified Phase 2 teaching contract and the build log of every system." },
@@ -44,7 +44,7 @@ const DESKS = [
 
 const FILES: [string, string][] = [
   ["lib/forecast.ts", "Weekly generator, lags, ridge, forest, Holt, ensemble, z / CUSUM, national snapshot."],
-  ["lib/openrouter.ts", "One key. Groups of three models. Paid → free → openrouter/auto. Vision chain."],
+  ["lib/llm.ts", "One Gemini key. One model per call. 2.5 Flash → 2.5 Pro → 2.0 Flash → Lite → Gemma. Self-healing chain."],
   ["lib/env.ts", "Reads every plausible secret name. Never ships a key to the browser."],
   ["lib/dhims2.ts", "CSV / TSV / semicolon parser, quality log, completeness, negatives clipped."],
   ["lib/nowcast.ts", "Reporting-delay completeness curve. Interval, not a secret true count."],
@@ -88,7 +88,7 @@ const MODELS = [
 ];
 
 const KEYS = [
-  ["OPENROUTER_API_KEY", "Chat, vision, briefing, extract review, field card. One key. Groups of three + :free + openrouter/auto."],
+  ["GEMINI_API_KEY", "Chat, tools, vision, deep research, images, speech, briefing, extract review, field card. One key for everything."],
   ["TAVILY_API_KEY", "Cited search. Without it the desk uses DuckDuckGo HTML."],
   ["ELEVENLABS_API_KEY", "Studio voice. Restricted keys cannot hit /v1/user; the desk probes /v1/voices and still speaks."],
   ["OPENWEATHER_API_KEY", "Live Accra, Kumasi, Tamale… Without it, climatic placeholders, labelled as such."],
@@ -101,7 +101,7 @@ const BUILD = [
   ["2. Repair the companion code", "code.txt was South Africa, had a syntax error in alerts, deprecated fillna, SARIMA fit on the full series, and a leaky RF merge."],
   ["3. Retarget Ghana", "Sixteen official regions. Thirteen One Health signals. Unit of analysis = region-week."],
   ["4. Build the statistical desk", "TypeScript engine so the website does not need Python at runtime. Notebook remains the proof."],
-  ["5. Wire one OpenRouter key", "Cross-provider fallback. Then the live 400 taught us: at most three slugs per request."],
+  ["5. Wire one Gemini key", "One credential, one bill, one chain. Retired slugs are skipped against Google’s live catalogue."],
   ["6. Make files first-class", "Vision Lab reads what a district office actually holds: scans, memos, Excel, photos."],
   ["7. Give climate a desk", "OpenWeather is the environmental pillar, not a widget."],
   ["8. Speak the field card", "Ninety words. Five languages. ElevenLabs or the device voice."],
@@ -122,7 +122,7 @@ export default function WorkbookPage() {
         Original title: <i>ONE HEALTH PANDEMIC AND DISEASE OUTBREAK FORECASTING - Phase 2</i>.
         The class notebook taught a single COVID series in Colab. The production brief is a
         national desk: sixteen regions, thirteen One Health signals, files and photographs,
-        one OpenRouter key with a real fallback chain, voice, climate, extracts, and an honest
+        one Gemini key with a real fallback chain, voice, climate, extracts, and an honest
         interval. This page is that brief <em>and</em> the build log - written so a district
         director and a software examiner can both finish it.
       </p>
@@ -155,7 +155,7 @@ export default function WorkbookPage() {
           ["7", "forecast families"],
           ["4 wks", "default horizon"],
           ["z > 2", "investigation watch"],
-          ["3", "models per OpenRouter call"],
+          ["1", "key for the whole engine"],
           ["0", "patient identifiers"],
         ].map(([n, l]) => (
           <div key={l} className="rounded-3xl border border-line bg-white p-5 shadow-card">
@@ -229,7 +229,7 @@ export default function WorkbookPage() {
         <p className="mt-4 leading-8">
           The professor’s modification is operational. Walk out of class into a Ghana Health
           Service system. That means: Ghana only; many diseases; documents and photographs as
-          first-class inputs; one OpenRouter key with a real fallback chain; spoken field cards;
+          first-class inputs; one Gemini key with a real fallback chain; spoken field cards;
           web search; climate as a pillar; a white national UI; and a path onto Render with
           secrets that never touch the browser.
         </p>
@@ -280,7 +280,7 @@ export default function WorkbookPage() {
         <Eyebrow n="03" />
         <h2 className="font-display text-4xl tracking-tight">What we built - eleven rooms</h2>
         <img src="/images/system-architecture.png" alt="System architecture" className="mt-6 w-full rounded-[28px] border border-line bg-white shadow-card" />
-        <p className="mt-3 text-center text-sm text-muted">Figure 3. Artefacts in, leakage-safe models, OpenRouter fallback, Ghana command UI.</p>
+        <p className="mt-3 text-center text-sm text-muted">Figure 3. Artefacts in, leakage-safe models, Gemini fallback, Ghana command UI.</p>
         <div className="mt-6 overflow-hidden rounded-[28px] border border-line bg-white shadow-card">
           <table className="w-full text-left text-sm">
             <thead className="bg-paper text-muted">
@@ -421,36 +421,33 @@ export default function WorkbookPage() {
 
       <article id="m08" className="mt-16">
         <Eyebrow n="08" />
-        <h2 className="font-display text-4xl tracking-tight">OpenRouter - one key, groups of three</h2>
+        <h2 className="font-display text-4xl tracking-tight">Gemini - one key, one chain</h2>
         <p className="mt-4 leading-8">
-          There is a single server-side <code>OPENROUTER_API_KEY</code>. It is never shipped to the
-          browser. One key is enough because OpenRouter already sits in front of OpenAI, Google,
-          Anthropic, DeepSeek, Meta, Mistral and the free-tier hosts.
+          There is a single server-side <code>GEMINI_API_KEY</code> (Google AI Studio). It is never
+          shipped to the browser, and it is the whole engine: chat and reasoning, agentic tool
+          calling, vision, deep research, image generation, speech-to-text and text-to-speech.
+          One credential, one quota, one place to look when something stops answering.
         </p>
         <p className="mt-4 leading-8">
-          Live forensic finding (2026-08-19, production host): sending more than three slugs in
-          the request <code>models</code> array returns{" "}
-          <code>400 &apos;models&apos; array must have 3 items or fewer.</code> That is why older
-          builds looked as if “the API key does not work.” The key was valid. The payload was not.
-          Tavily and OpenWeather already answered 200 on the same host.
+          The Gemini API takes exactly one model per request - the slug is part of the URL
+          (<code>/v1beta/models/&#123;model&#125;:generateContent</code>) - so the fallback chain is
+          walked one model at a time rather than batched. Streaming uses{" "}
+          <code>:streamGenerateContent?alt=sse</code>, and tool calling travels as{" "}
+          <code>functionDeclarations</code> in / <code>functionCall</code> parts out.
         </p>
         <ol className="mt-4 list-decimal space-y-2 pl-5 leading-7">
-          <li>The full chain is chunked into groups of three (OpenRouter’s hard limit).</li>
-          <li>Each group is sent as <code>model</code> + <code>models[≤3]</code> with <code>provider.allow_fallbacks</code>.</li>
-          <li>A dead GPT-4.1 slug does not kill Gemini in the same group, or the next group.</li>
-          <li>A 402 (empty OpenRouter balance) drops the remaining paid groups and retries <code>:free</code> models.</li>
-          <li>Last resort is <code>openrouter/auto</code>.</li>
+          <li>The chain is filtered against <code>ListModels</code> for that key, so a slug Google retired is skipped before a request is ever sent.</li>
+          <li>Each model is tried with thinking disabled first - 2.5 models otherwise spend the whole output budget on hidden reasoning and return <code>MAX_TOKENS</code> with no text, which looks exactly like a dead key.</li>
+          <li>A 429 / quota error moves to the next model; a dead slug is remembered for the process so it is never paid for twice.</li>
+          <li>After the paid-first chain, the light free-tier models (Flash-Lite, Gemma) are retried.</li>
           <li>401 / true auth-403 stops the chain and tells the officer the key was rejected - we do not pretend it worked.</li>
+          <li>A pinned model is sent alone; if it genuinely cannot answer, the UI is told the pin was released.</li>
         </ol>
         <p className="mt-4 leading-8">
-          Failed attempts are not billed. Quota on one vendor is transient: the next request starts
-          at the top of the list again. Free models are weaker and rate-limited. They keep the desk
-          alive; they do not make the future error-free.
-        </p>
-        <p className="mt-4 leading-8">
-          Default paid group 1: <code>openai/gpt-4.1-mini</code> → <code>google/gemini-2.5-flash</code> →{" "}
-          <code>openai/gpt-4o-mini</code>. You may prepend slugs with the <code>OPENROUTER_MODELS</code>
-          environment variable (comma-separated). They are still chunked into threes.
+          Default chain: <code>gemini-2.5-flash</code> → <code>gemini-2.5-pro</code> →{" "}
+          <code>gemini-2.0-flash</code> → <code>gemini-flash-latest</code> →{" "}
+          <code>gemini-2.5-flash-lite</code>. You may prepend slugs with the{" "}
+          <code>GEMINI_MODELS</code> environment variable (comma-separated).
         </p>
       </article>
 
@@ -477,9 +474,10 @@ export default function WorkbookPage() {
         </div>
         <p className="mt-6 leading-8">
           Alias names are accepted so a mistyped Render variable still works:{" "}
-          <code>OPEN_ROUTER_API_KEY</code>, <code>TAVILY_KEY</code>, <code>OPENWEATHERMAP_API_KEY</code>,{" "}
-          <code>XI_API_KEY</code>, and an <code>OPENAI_API_KEY</code> that actually starts with{" "}
-          <code>sk-or-</code>. Quotes and a leading <code>Bearer</code> are stripped.
+          <code>GOOGLE_API_KEY</code>, <code>GOOGLE_GENERATIVE_AI_API_KEY</code>, <code>GEMINI_KEY</code>,{" "}
+          <code>GOOGLE_GENAI_KEY</code>, <code>TAVILY_KEY</code>, <code>OPENWEATHERMAP_API_KEY</code> and{" "}
+          <code>XI_API_KEY</code>. Quotes and a leading <code>Bearer</code> are stripped. A key from a
+          different provider is rejected with a plain explanation rather than a mystery 400.
         </p>
         <p className="mt-4 leading-8">
           Never put a secret in <code>NEXT_PUBLIC_*</code>. Those strings are compiled into the
@@ -512,7 +510,7 @@ export default function WorkbookPage() {
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <Card title="Ghana-locked chat" body="The system prompt is GHANA_CONTEXT. Sixteen regions. Thirteen signals. No invented circulars. Optional live ensemble JSON is attached when a disease is selected." />
           <Card title="Web search" body="Tavily advanced search over GHS / MoH / WHO / NADMO / Noguchi domains. DuckDuckGo HTML is the offline path. Hits are labelled unverified." />
-          <Card title="Voice in" body="Web Speech API on Chrome / Edge (en-GH). Optional Whisper via OpenRouter if the host exposes /v1/audio/transcriptions." />
+          <Card title="Voice in" body="Web Speech API on Chrome / Edge (en-GH). Server-side transcription runs on the Gemini key: the clip is sent as inline audio to generateContent and comes back as a verbatim transcript." />
           <Card title="Voice out" body="ElevenLabs multilingual when the key can speak. Restricted keys fail /v1/user with missing_permissions - the desk probes /v1/voices instead. Otherwise the device voice." />
         </div>
       </article>
@@ -523,7 +521,7 @@ export default function WorkbookPage() {
         <p className="mt-4 leading-8">
           The upgrade that matters more than another model is an official weekly file.{" "}
           <Link href="/extracts" className="text-ghana-green underline">Extracts</Link> parse it,
-          write a quality log, ask OpenRouter for a 120-word fitness review, and hand the series to
+          write a quality log, ask Gemini for a 120-word fitness review, and hand the series to
           the forecast desk. Completeness is a number, not a vibe. A Ghana template CSV is one click
           away.
         </p>
@@ -572,7 +570,7 @@ export default function WorkbookPage() {
           <li>Every chat, vision run, forecast, and extract writes an audit row (actor, action, model, redaction count).</li>
           <li>HMAC-SHA256 signed export. Post the file back to <code>/api/admin/audit</code> to verify it was not edited.</li>
           <li>Append-only <code>events.jsonl</code> on disk; optional Postgres snapshot so free-web sleep does not wipe history.</li>
-          <li>API desk probes OpenRouter (3-model payload), Tavily, OpenWeather, and ElevenLabs voices.</li>
+          <li>API desk probes Gemini (brain, vision and image models), Tavily, OpenWeather, and ElevenLabs voices.</li>
         </ul>
       </article>
 
@@ -591,11 +589,11 @@ export default function WorkbookPage() {
           on the live host. None of this is hidden in the product copy.
         </p>
         <p className="mt-4 leading-8">
-          Required dashboard secrets: <code>OPENROUTER_API_KEY</code>, <code>ADMIN_PASSWORD</code>,{" "}
+          Required dashboard secrets: <code>GEMINI_API_KEY</code>, <code>ADMIN_PASSWORD</code>,{" "}
           <code>SESSION_SECRET</code>, <code>NEXT_PUBLIC_SITE_URL</code>. Optional: Tavily,
-          ElevenLabs, OpenWeather, <code>OPENROUTER_MODELS</code>. After a deploy, open{" "}
+          ElevenLabs, OpenWeather, <code>GEMINI_MODELS</code>. After a deploy, open{" "}
           <Link href="/api/health" className="text-ghana-green underline">/api/health</Link> and
-          expect <code>openrouter: true</code> if the key is present.
+          expect <code>gemini: true</code> if the key is present.
         </p>
       </article>
 
@@ -618,7 +616,7 @@ export default function WorkbookPage() {
                 ["RF merge after a leaky split", "Engineer features, then split."],
                 ["alerts [[ syntax error", "Fixed print in the companion notebook."],
                 ["fillna(method='ffill') deprecated", ".ffill()."],
-                ["OpenRouter models[] longer than 3 → 400 on the live host", "Chunk the chain into groups of three. That was the 'key does not work' bug."],
+                ["Two AI billing accounts, two failure modes", "Every AI feature now runs on the single GEMINI_API_KEY. One key to set, one quota to watch."],
                 ["ElevenLabs /v1/user → missing_permissions", "Probe /v1/voices; TTS still works on restricted keys."],
                 ["Blueprint empty-string env defaults", "sync: false so Apply cannot wipe dashboard secrets."],
                 ["Scoreboard compared two forecasts to each other", "MAE/RMSE/sMAPE now score walk-forward backtests against the hold-out."],
@@ -645,7 +643,7 @@ export default function WorkbookPage() {
           <li>No patient name, folder number, phone, or small-cell paediatric count in a prompt.</li>
           <li>No API key in <code>NEXT_PUBLIC_*</code> or client JavaScript.</li>
           <li>No global operations centre. Ghana only, unless the user is comparing an imported border risk.</li>
-          <li>OpenRouter may draft a briefing. It may not decide that an intervention launches.</li>
+          <li>Gemini may draft a briefing. It may not decide that an intervention launches.</li>
         </ul>
       </article>
 
@@ -658,7 +656,7 @@ export default function WorkbookPage() {
           <li>Ingest a public or official extract. Keep the quality log.</li>
           <li>Show two models plus a naive baseline on a chronological hold-out.</li>
           <li>Print intervals. Print z / CUSUM watches. Write feature caveats.</li>
-          <li>Log which model actually answered (OpenRouter fallback is a feature, not a mystery).</li>
+          <li>Log which model actually answered (the Gemini fallback chain is a feature, not a mystery).</li>
           <li>One-page limit statement. Field investigation remains mandatory.</li>
         </ol>
         <p className="mt-4 leading-8">
@@ -703,7 +701,7 @@ export default function WorkbookPage() {
         <div className="mt-6 grid gap-3 md:grid-cols-2">
           <Card
             title="Reasoning and tools"
-            body="An agentic loop on OpenRouter: the model plans, calls tools, reads the results and keeps going - up to eight steps a turn, in groups of three model slugs so one exhausted vendor never stops the answer."
+            body="An agentic loop on Gemini: the model plans, calls tools, reads the results and keeps going - up to eight steps a turn, walking the Gemini model chain so one exhausted model never stops the answer."
           />
           <Card
             title="Live internet"
@@ -715,7 +713,7 @@ export default function WorkbookPage() {
           />
           <Card
             title="Images"
-            body="New imagery through the Gemini image models on a Gemini API key, plus real Unsplash stock photography for reports and slides. Reasoning, research and vision stay on the OpenRouter fallback chain."
+            body="New imagery through the Gemini image models, plus real Unsplash stock photography for reports and slides. Reasoning, research and vision run on the same Gemini key."
           />
           <Card
             title="In-built sandbox"
@@ -738,7 +736,7 @@ export default function WorkbookPage() {
             ["web_search", "Tavily live search with citations"],
             ["web_fetch", "Read one page; blocks metadata and loopback hosts"],
             ["image_search", "Unsplash stock photography (Tavily fallback)"],
-            ["image_generate", "New AI images through OpenRouter"],
+            ["image_generate", "New AI images through the Gemini image models"],
             ["vision_read", "Extract structure from attached files"],
             ["create_file", "Write a deliverable into the workspace"],
             ["list_files", "Inspect the workspace"],

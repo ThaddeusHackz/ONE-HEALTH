@@ -1,5 +1,12 @@
 # Forensic scan 2026-08-29 — vision/deep-research engine split, model-chain rot, PDF extraction, dev-server bootstrap
 
+> **SUPERSEDED — historical record.** This document describes the platform when it
+> still ran on OpenRouter. On 2026-08-29 the product was migrated to a **single
+> Gemini engine** (`lib/llm.ts`, one `GEMINI_API_KEY`); no OpenRouter key, slug,
+> env var or code path remains. Kept unedited as an audit trail. For the current
+> architecture see [`GEMINI_MIGRATION_2026-08-29.md`](GEMINI_MIGRATION_2026-08-29.md)
+> and [`AGENT_FORENSIC.md`](AGENT_FORENSIC.md).
+
 Scope: the full platform. Method: `npm run forensic` — typecheck, lint, source
 contracts, then the **real compiled `lib/` code driven against local mock
 OpenRouter + Gemini HTTP servers** (no external network, no real keys), plus the

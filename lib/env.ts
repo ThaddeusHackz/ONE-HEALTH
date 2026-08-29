@@ -18,39 +18,51 @@ function first(...names: string[]): string {
   return "";
 }
 
-export function openRouterKey(): string {
+/**
+ * THE key. GEMINI_API_KEY (Google AI Studio - https://aistudio.google.com/apikey)
+ * is the single engine credential for this platform: chat and reasoning,
+ * agentic tool calling, vision (photos, PDFs, documents), deep research,
+ * image generation, speech-to-text and text-to-speech all run on it.
+ *
+ * A legacy OpenRouter key (sk-or-…) is NOT a Google key and is never sent to
+ * Google, no matter which variable it was pasted into.
+ */
+export function geminiKey(): string {
   const direct = first(
-    "OPENROUTER_API_KEY",
-    "OPEN_ROUTER_API_KEY",
-    "OPENROUTER_KEY",
-    "OR_API_KEY",
-    "OPENROUTER",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_KEY",
+    "GOOGLE_GENAI_KEY",
+    "GOOGLE_AI_STUDIO_API_KEY",
   );
-  if (direct) return direct;
-  // Last-resort: some hosts put the sk-or key under an OpenAI-shaped name.
-  const openaiShaped = first("OPENAI_API_KEY", "OPENAI_KEY");
-  if (openaiShaped.startsWith("sk-or-")) return openaiShaped;
-  return "";
+  if (direct.startsWith("sk-or-")) return "";
+  return direct;
 }
 
-export function openRouterReferer(): string {
-  return (
-    first("OPENROUTER_HTTP_REFERER", "NEXT_PUBLIC_SITE_URL") ||
-    "https://one-health-ghana.onrender.com"
-  );
-}
-
-export function openRouterTitle(): string {
-  return first("OPENROUTER_APP_TITLE") || "ONE HEALTH GHANA";
-}
-
-export function extraOpenRouterModels(): string[] {
-  const raw = first("OPENROUTER_MODELS", "OPENROUTER_MODEL");
+/** Optional comma-separated Gemini text/vision model slugs tried before the built-in chain. */
+export function extraGeminiModels(): string[] {
+  const raw = first("GEMINI_MODELS", "GEMINI_MODEL", "GEMINI_TEXT_MODELS");
   if (!raw) return [];
   return raw
     .split(/[,\n]/)
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^models\//, ""))
     .filter(Boolean);
+}
+
+/** Optional comma-separated Gemini image model slugs tried before the built-in chain. */
+export function geminiImageModels(): string[] {
+  const raw = first("GEMINI_IMAGE_MODELS", "GEMINI_IMAGE_MODEL");
+  if (!raw) return [];
+  return raw
+    .split(/[,\n]/)
+    .map((s) => s.trim().replace(/^models\//, ""))
+    .filter(Boolean);
+}
+
+/** Optional prebuilt Gemini TTS voice (see ai.google.dev speech generation docs). */
+export function geminiVoice(): string {
+  return first("GEMINI_TTS_VOICE", "GEMINI_VOICE") || "Kore";
 }
 
 export function tavilyKey(): string {
@@ -67,46 +79,6 @@ export function elevenLabsVoice(): string {
 
 export function unsplashKey(): string {
   return first("UNSPLASH_ACCESS_KEY", "UNSPLASH_API_KEY", "UNSPLASH_KEY");
-}
-
-/**
- * Direct OpenAI key for Whisper speech-to-text. When absent we route
- * transcription through OpenRouter's audio endpoint (same key, one bill).
- */
-export function whisperKey(): string {
-  const direct = first("OPENAI_API_KEY", "OPENAI_WHISPER_API_KEY", "WHISPER_API_KEY");
-  // An sk-or key is not an OpenAI key - never send it to api.openai.com.
-  if (direct.startsWith("sk-or-")) return "";
-  return direct;
-}
-
-/**
- * Gemini API key - the platform's primary engine for VISION (reading photos,
- * PDFs, documents in the agent, Vision Lab and One Health ingest), DEEP
- * RESEARCH synthesis and IMAGE GENERATION. OpenRouter stays the reasoning
- * brain for chat; whenever a file or image must be SEEN, it goes through here.
- */
-export function geminiKey(): string {
-  const direct = first(
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-    "GEMINI_KEY",
-    "GOOGLE_GENAI_KEY",
-  );
-  // An OpenRouter key is not a Google key - never send it to Google.
-  if (direct.startsWith("sk-or-")) return "";
-  return direct;
-}
-
-/** Optional comma-separated Gemini image model slugs tried before the built-in chain. */
-export function geminiImageModels(): string[] {
-  const raw = first("GEMINI_IMAGE_MODELS", "GEMINI_IMAGE_MODEL");
-  if (!raw) return [];
-  return raw
-    .split(/[,\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 export function agentMaxSteps(): number {
@@ -140,7 +112,7 @@ export function adminName(): string {
 }
 
 export function sessionSecret(): string {
-  return first("SESSION_SECRET") || openRouterKey() || "one-health-ghana-dev-secret";
+  return first("SESSION_SECRET") || geminiKey() || "one-health-ghana-dev-secret";
 }
 
 export function maskKey(value: string): string {

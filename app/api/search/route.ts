@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { webSearch } from "@/lib/search";
-import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { completeWithSystem, geminiConfigured } from "@/lib/llm";
 import { readJsonBody } from "@/lib/body";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const hits = await webSearch(query, 6);
   let synthesis = "";
   let model = "search-only";
-  if (body.synthesize && openRouterConfigured() && hits.length) {
+  if (body.synthesize && geminiConfigured() && hits.length) {
     try {
       const r = await completeWithSystem({
         extraSystem: "Synthesize only from the provided hits. Ghana-only public health. Cite URLs. Flag stale or unofficial pages.",

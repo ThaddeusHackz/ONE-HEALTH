@@ -3,15 +3,13 @@ import {
   elevenLabsKey,
   geminiKey,
   maskKey,
-  openRouterKey,
   openWeatherKey,
   tavilyKey,
   unsplashKey,
-  whisperKey,
 } from "@/lib/env";
 import { TOOLS } from "@/lib/agent/tools";
 import { archiveStats } from "@/lib/archive";
-import { lastOpenRouterError } from "@/lib/openrouter";
+import { CHAT_MODELS, lastGeminiError, MAX_MODELS_PER_REQUEST } from "@/lib/llm";
 import { getDB } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -51,23 +49,28 @@ export function GET() {
       env: process.env.NODE_ENV || "development",
     },
     capabilities: {
-      openrouter: Boolean(openRouterKey()),
-      openrouterKey: maskKey(openRouterKey()),
-      lastOpenRouterError: lastOpenRouterError() || null,
+      gemini: Boolean(geminiKey()),
+      geminiKey: maskKey(geminiKey()),
+      lastGeminiError: lastGeminiError() || null,
+      /** The single engine key drives chat, tools, vision, research and media. */
+      brain: Boolean(geminiKey()),
       search: Boolean(tavilyKey()),
       voice: Boolean(elevenLabsKey()),
       weather: Boolean(openWeatherKey()),
       stockImages: Boolean(unsplashKey()),
       imageGen: Boolean(geminiKey()),
       imageGenEngine: geminiKey() ? "gemini" : "not configured",
-      /** Vision + deep research run ONLY on the independent Gemini key. */
+      /** Vision + deep research run on the same single Gemini key. */
       vision: Boolean(geminiKey()),
       visionEngine: geminiKey() ? "gemini" : "not configured",
       deepResearch: Boolean(geminiKey()),
-      whisper: Boolean(whisperKey()),
+      transcribe: Boolean(geminiKey()),
+      transcribeEngine: geminiKey() ? "gemini" : "browser speech only",
       agentTools: TOOLS.length,
       freeModelFallback: true,
-      openrouterMaxModelsPerRequest: 3,
+      engine: "gemini",
+      modelChain: CHAT_MODELS,
+      maxModelsPerRequest: MAX_MODELS_PER_REQUEST,
     },
     store,
     archive: archiveStats(),

@@ -22,7 +22,7 @@ components/agent/AgentWorkspace.tsx Preview · Code · Files · Console · Memor
 components/agent/SandboxFrame.tsx   the isolated execution environment
 components/agent/Charts.tsx         Recharts + table renderers
 components/agent/Diagram.tsx        Mermaid -> SVG: zoom, pan, source, SVG/PNG export
-components/agent/Voice.tsx          Whisper in, ElevenLabs/OpenRouter/browser out
+components/agent/Voice.tsx          Gemini speech-to-text in, ElevenLabs/Gemini TTS/browser out
 
 app/api/agent/route.ts              POST = SSE stream; GET = tool registry
 app/api/agent/memory/route.ts       facts + conversations
@@ -39,7 +39,8 @@ lib/agent/web.ts                    Tavily + DuckDuckGo + page reader (SSRF-guar
 lib/agent/media.ts                  Unsplash search + Gemini image generation
 lib/agent/deep-research.ts          decompose → parallel search → read → synthesise
 lib/agent/compute.ts                deterministic expression engine (no eval)
-lib/openrouter.ts                   model chain, 3-slug chunking, streaming, tool calling
+lib/llm.ts                          THE Gemini engine: model chain, catalogue filter, streaming, tool calling
+lib/agent/gemini.ts                 task-shaped helpers on top of it (vision, ping)
 ```
 
 ---
@@ -48,8 +49,8 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 
 | Capability | Tool / surface | Key required | Without the key |
 |---|---|---|---|
-| Reasoning, planning, writing, code | agentic loop | `OPENROUTER_API_KEY` | offline notice; local desks still work |
-| Model resilience | 15-model chain in groups of 3, live-catalogue filtering, `:free` fallback | `OPENROUTER_API_KEY` | — |
+| Reasoning, planning, writing, code | agentic loop | `GEMINI_API_KEY` | offline notice; local desks still work |
+| Model resilience | 6-model Gemini chain, live-catalogue filtering, free-tier fallback, dead-slug caching | `GEMINI_API_KEY` | — |
 | Live web search | `web_search` | `TAVILY_API_KEY` | DuckDuckGo HTML scrape |
 | Read a page | `web_fetch` | none | always available (SSRF-guarded) |
 | Multi-step sourced research | `deep_research` | `GEMINI_API_KEY` (+ Tavily) | raw source list only |
@@ -67,11 +68,11 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 | Ghana ensemble forecast | `ghana_forecast` | none | always available |
 | National signal board | `ghana_national_table` | none | always available |
 | Climate signals | `weather_now` | `OPENWEATHER_API_KEY` | climatic placeholders |
-| Long-term memory | `memory_save`, `memory_recall`, auto-distillation | none (distillation needs OpenRouter) | manual facts still work |
-| Visible planning | `plan` | `OPENROUTER_API_KEY` | — |
-| Clarifying questions | `ask_user` (browser) | `OPENROUTER_API_KEY` | — |
-| Voice in | MediaRecorder → `/api/transcribe` | `OPENAI_API_KEY` → OpenRouter → Web Speech | browser dictation |
-| Voice out | `/api/tts` | `ELEVENLABS_API_KEY` → OpenRouter → `speechSynthesis` | device voice |
+| Long-term memory | `memory_save`, `memory_recall`, auto-distillation | none (distillation needs `GEMINI_API_KEY`) | manual facts still work |
+| Visible planning | `plan` | `GEMINI_API_KEY` | — |
+| Clarifying questions | `ask_user` (browser) | `GEMINI_API_KEY` | — |
+| Voice in | MediaRecorder → `/api/transcribe` | `GEMINI_API_KEY` → Web Speech | browser dictation |
+| Voice out | `/api/tts` | `ELEVENLABS_API_KEY` → Gemini TTS → `speechSynthesis` | device voice |
 | Conversation history | `/api/agent/memory` | none | localStorage mirror in the browser |
 
 ---
@@ -85,7 +86,7 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 2. Redact the user's text (`lib/redact.ts`) before it leaves the instance.
 3. Attach up to six files to the user turn: images as `image_url` parts, PDFs as `file`
    parts, text as an inline excerpt.
-4. Stream from OpenRouter with `tools` + `tool_choice: "auto"`.
+4. Stream from Gemini (`:streamGenerateContent?alt=sse`) with `functionDeclarations` + `functionCallingConfig.mode: "AUTO"`.
 5. Deltas go to the browser as `event: delta`; reasoning tokens as `event: reasoning`.
 6. Tool calls are answered in order; each result goes back as a `role: "tool"` message
    and the loop continues — up to `AGENT_MAX_STEPS` (default 8, max 24).
@@ -96,10 +97,13 @@ lib/openrouter.ts                   model chain, 3-slug chunking, streaming, too
 8. On completion the conversation is persisted and durable facts are distilled in the
    background — never blocking the reply.
 
-**Fallback behaviour** (`lib/openrouter.ts`): three slugs per request is an OpenRouter
-limit, so the 17-model chain is walked in groups of six groups; a 401/403 stops
-immediately with a readable message; a 402 retries on the `:free` pool; providers that
-reject `tools` are retried without them so a tool-capable turn can never hard-fail.
+**Fallback behaviour** (`lib/llm.ts`): the Gemini API takes exactly one model per
+request (the slug is in the URL), so the chain is walked one model at a time. The chain
+is first filtered against `ListModels` for that key, so a retired slug never even gets
+a request. A 400/401 "API key not valid" stops immediately with a readable message; a
+429 rotates to the next model and finally to the free-tier models; a model that rejects
+`tools` is retried without them so a tool-capable turn can never hard-fail; a 404 slug
+is cached dead for the process so it is never paid for twice.
 
 ---
 
@@ -199,11 +203,11 @@ separate chunk, not part of the agent's first paint.
 
 ## 7. Known limits (stated, not hidden)
 
-1. **No API key means no brain.** The loop, research, vision and image generation all
-   need `OPENROUTER_API_KEY`. The local statistical desks do not.
-2. **Image generation is a separate key.** It runs on the Gemini API, not OpenRouter, so
-   `GEMINI_API_KEY` must be set even when reasoning works. Gemini has its own free-tier
-   rate limits and its own billing.
+1. **No API key means no brain.** The loop, research, vision, image generation and
+   server-side speech all need `GEMINI_API_KEY`. The local statistical desks do not.
+2. **One key, one quota.** Everything shares the same Gemini free-tier rate limits and
+   the same billing. That is the trade for having a single credential: when the quota is
+   gone it is gone for every AI surface at once, and `/api/diagnostics` says so plainly.
 3. **Pyodide needs the CDN.** A locked-down browser or an offline client cannot run
    Python; JavaScript/HTML still run.
 4. **Memory recall is keyword-based**, not embedding-based. It is deterministic and

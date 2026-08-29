@@ -2,6 +2,61 @@
 
 This is the complete list of work from the ONE HEALTH GHANA session. Latest forensic pass lives on `arena/01a04e5b-one-health-ai`.
 
+## 2026-08-29 (pass 7) TOTAL MIGRATION - one key, one engine: OpenRouter removed entirely
+
+Full report: [`docs/GEMINI_MIGRATION_2026-08-29.md`](docs/GEMINI_MIGRATION_2026-08-29.md).
+Every feature that used `OPENROUTER_API_KEY` now uses `GEMINI_API_KEY`. Nothing dual-runs.
+
+### The engine
+- [x] **`lib/openrouter.ts` and `lib/or-review.ts` DELETED** (`git rm`)
+- [x] **`lib/llm.ts` NEW** - the single Gemini engine: model chain, live-catalogue
+      filtering, blocking + SSE streaming, function calling, transcript conversion,
+      JSON-Schema sanitisation, full error taxonomy (`auth`, `quota`, `dead_model`,
+      `tool_rejected`, `transient`, `empty`)
+- [x] **`lib/ai-review.ts` NEW** - `aiReview(kind, payload)` replaces `or-review`
+- [x] `lib/agent/gemini.ts` reduced to a thin task layer (vision, ping) over `lib/llm.ts`
+      so exactly one module speaks HTTP to a model
+
+### Protocol gaps closed (Gemini is not OpenAI-compatible)
+- [x] `MAX_MODELS_PER_REQUEST = 1` - the slug is in the URL, so the chain is walked one
+      model at a time and the answering model is reported
+- [x] `x-goog-api-key` instead of `Authorization: Bearer`
+- [x] system message → `systemInstruction`; `assistant` → `model`
+- [x] no tool role and no call ids in Gemini: `role:"tool"` becomes a user turn carrying
+      `functionResponse{name,response}`, with synthetic ids `call_{i}_{name}`
+- [x] `tools` + `tool_choice` → `functionDeclarations` + `functionCallingConfig.mode:"AUTO"`
+- [x] `sanitizeSchema()` strips `$schema` / `additionalProperties` / `exclusiveMinimum`,
+      which Gemini rejects outright
+- [x] `responseMimeType:"application/json"` only when no tools are present (mutually exclusive)
+- [x] `thinkingBudget: 0` by default so a 2.5 model cannot return `MAX_TOKENS` and no text;
+      a starved response retries with a plain config and a bigger budget
+- [x] parts flagged `thought:true` never returned as the answer - routed to the reasoning channel
+- [x] dead-slug memoisation (404 cached for the process); 429 → next model → free-tier chain;
+      tool rejection → same model retried tool-free
+
+### Features moved off OpenRouter
+- [x] chat, agent loop + streaming + tool calling, briefing, forecast narrative,
+      field brief, search, nowcast, series review, DHIMS2 audit
+- [x] **speech-to-text**: Whisper/OpenRouter → Gemini inline audio → browser Web Speech
+- [x] **text-to-speech**: ElevenLabs → **Gemini TTS** (raw s16le PCM @24 kHz wrapped in a
+      WAV header) → `speechSynthesis`
+- [x] `lib/agent/models.ts` pins bare Gemini/Gemma slugs only; vendor-prefixed slugs
+      (including `google/gemini-2.5-flash`) rejected as guaranteed 404s
+- [x] `/api/health` reports `engine: "gemini"`, `maxModelsPerRequest: 1` and the chain;
+      `/api/diagnostics` explains the one-key contract
+
+### Config, docs, tests
+- [x] `.env.example` + `render.yaml` rewritten Gemini-only; all `OPENROUTER_*` and
+      `OPENAI_API_KEY` removed
+- [x] README, DEPLOYMENT, `docs/AI_CAPABILITIES.md`, `docs/AGENT_FORENSIC.md` and the
+      workbook PDF generator rewritten for the single engine; superseded OpenRouter-era
+      audits keep an unedited audit trail behind a SUPERSEDED banner
+- [x] `scripts/forensic-scan.cjs` rebuilt on a mock **Gemini** API - **42 checks, 0 errors**
+- [x] `scripts/agent-selftest.cjs` + `scripts/selftest.cjs` converted - **all passing**
+- [x] a self-test walks `lib/`, `app/`, `components/`, `render.yaml` and `.env.example` and
+      **fails the build** on any `openrouter` reference; the only exception is the
+      deliberate `sk-or-` guard in `lib/env.ts`
+
 ## 2026-08-29 (pass 6) Full forensic scan - Gemini-only vision & research, model-chain rot, PDF extraction, dev bootstrap
 
 ### Vision + deep research run ONLY on the independent Gemini key

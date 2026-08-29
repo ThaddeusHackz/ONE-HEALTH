@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/body";
-import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { completeWithSystem, geminiConfigured } from "@/lib/llm";
 import { runForecast } from "@/lib/forecast";
 import { reportingNowcast } from "@/lib/nowcast";
 import { languageInstruction } from "@/lib/languages";
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
 
   let text = FALLBACK[language] || FALLBACK.en;
   let model = "offline-field-card";
-  if (openRouterConfigured()) {
+  if (geminiConfigured()) {
     try {
       const r = await completeWithSystem({
         extraSystem: `Write a 90-word FIELD card for a Ghana CHPS / district officer. No jargon wall. 3 numbered actions. State that this is not confirmation. ${languageInstruction(language)}`,

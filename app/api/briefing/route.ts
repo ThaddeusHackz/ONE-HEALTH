@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { completeWithSystem, openRouterConfigured } from "@/lib/openrouter";
+import { completeWithSystem, geminiConfigured } from "@/lib/llm";
 import { formatHits, webSearch } from "@/lib/search";
 import { ghanaWeather } from "@/lib/weather";
 import { nationalSnapshot } from "@/lib/forecast";
@@ -12,7 +12,7 @@ export async function GET() {
   const snap = nationalSnapshot();
   const alerts = snap.filter((s) => s.alert);
 
-  if (!openRouterConfigured()) {
+  if (!geminiConfigured()) {
     return NextResponse.json({
       model: "offline",
       text: `Offline sitrep. ${alerts.length} signals above z=2. Weather: ${weather.note}. Search hits: ${hits.length}.`,
