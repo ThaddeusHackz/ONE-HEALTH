@@ -1,7 +1,11 @@
-import { completeWithSystem, openRouterConfigured } from "./openrouter";
+import { completeWithSystem, geminiConfigured } from "./llm";
 
-export async function openRouterReview(kind: string, payload: unknown): Promise<{ text: string; model: string }> {
-  if (!openRouterConfigured()) {
+/**
+ * Short expert review of an artefact (DHIMS2 extract, nowcast, audit pack).
+ * Runs on the Gemini engine - the platform's single AI key.
+ */
+export async function aiReview(kind: string, payload: unknown): Promise<{ text: string; model: string }> {
+  if (!geminiConfigured()) {
     return { text: "", model: "offline" };
   }
   const prompts: Record<string, string> = {
@@ -23,3 +27,6 @@ export async function openRouterReview(kind: string, payload: unknown): Promise<
     return { text: "", model: `review-failed: ${(err as Error).message}` };
   }
 }
+
+/** Historical name kept so existing call sites read the same. */
+export const geminiReview = aiReview;

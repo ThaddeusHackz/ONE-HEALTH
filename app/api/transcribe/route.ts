@@ -1,23 +1,40 @@
 import { NextResponse } from "next/server";
-import { openRouterKey, openRouterReferer, openRouterTitle, whisperKey } from "@/lib/env";
+import { geminiKey } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * Speech-to-text with three tiers:
- *   1. OpenAI Whisper directly   (OPENAI_API_KEY)     - whisper-1 / gpt-4o-mini-transcribe
- *   2. OpenRouter audio route    (OPENROUTER_API_KEY) - openai/whisper-large-v3 + fallbacks
- *   3. Browser Web Speech API    (no key at all)      - handled client-side
+ * Speech-to-text on the Gemini API - the platform's single AI key.
+ *
+ *   1. Gemini audio understanding (GEMINI_API_KEY): the clip travels as an
+ *      inlineData part to :generateContent, which returns a verbatim
+ *      transcript. Walks a model fallback chain.
+ *   2. Browser Web Speech API (no key at all) - handled client-side.
+ *
+ * Gemini natively accepts wav, mp3, aiff, aac, ogg and flac. WebM/Opus (what
+ * MediaRecorder produces in Chrome) is sent as audio/ogg, which Google's
+ * decoder accepts for Opus payloads.
  */
 
-const OPENROUTER_STT_MODELS = [
-  "openai/whisper-large-v3",
-  "openai/whisper-1",
-  "google/gemini-2.5-flash",
-];
+const GEMINI_STT_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
 
-const OPENAI_STT_MODELS = ["gpt-4o-mini-transcribe", "whisper-1"];
+function apiBase(): string {
+  const raw = (process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta").trim();
+  return raw.replace(/\/+$/, "");
+}
+
+/** Map a browser recording MIME to one Gemini's audio decoder accepts. */
+function audioMime(type: string): string {
+  const t = (type || "").split(";")[0].trim().toLowerCase();
+  if (/webm|ogg|opus/.test(t)) return "audio/ogg";
+  if (/mp4|m4a|aac/.test(t)) return "audio/aac";
+  if (/mpeg|mp3/.test(t)) return "audio/mp3";
+  if (/wav|x-wav|wave/.test(t)) return "audio/wav";
+  if (/flac/.test(t)) return "audio/flac";
+  if (/aiff/.test(t)) return "audio/aiff";
+  return "audio/ogg";
+}
 
 export async function POST(req: Request) {
   const form = await req.formData();
@@ -25,84 +42,83 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "audio file required" }, { status: 400 });
   }
-  // Whisper's own limit is 25 MB; refusing anything larger protects the
-  // instance from a stray oversized upload before it is forwarded twice.
-  if (file.size > 25 * 1024 * 1024) {
-    return NextResponse.json({ error: `Audio too large (${(file.size / 1e6).toFixed(1)} MB) - keep clips under 25 MB.` }, { status: 413 });
+  // Inline request payloads are capped at 20 MB by the Gemini API; refusing
+  // anything larger protects the instance before the clip is base64-expanded.
+  if (file.size > 18 * 1024 * 1024) {
+    return NextResponse.json(
+      { error: `Audio too large (${(file.size / 1e6).toFixed(1)} MB) - keep clips under 18 MB.` },
+      { status: 413 },
+    );
   }
   const language = String(form.get("language") || "").trim();
-  const direct = whisperKey();
-  const router = openRouterKey();
+  const key = geminiKey();
 
-  if (!direct && !router) {
+  if (!key) {
     return NextResponse.json({
       text: "",
       engine: "none",
-      note: "No Whisper key. The browser microphone (Web Speech API) still works for English and several Ghana-relevant accents depending on the device.",
+      note: "No GEMINI_API_KEY. The browser microphone (Web Speech API) still works for English and several Ghana-relevant accents depending on the device.",
     });
   }
 
+  const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+  const mimeType = audioMime(file.type);
+  const prompt =
+    `Transcribe this audio verbatim.` +
+    (language ? ` The speaker is using language code ${language}.` : "") +
+    ` Return ONLY the transcript text - no preamble, no speaker labels, no timestamps, no commentary.` +
+    ` If the audio contains no intelligible speech, return an empty response.`;
+
   const errors: string[] = [];
 
-  if (direct) {
-    for (const model of OPENAI_STT_MODELS) {
-      const out = await postMultipart(
-        "https://api.openai.com/v1/audio/transcriptions",
-        { Authorization: `Bearer ${direct}` },
-        { model, file, language },
-      );
-      if (out.ok) return NextResponse.json({ text: out.text, model, engine: "openai" });
-      errors.push(`openai:${model}: ${out.error}`);
-    }
-  }
-
-  if (router) {
-    for (const model of OPENROUTER_STT_MODELS) {
-      const out = await postMultipart(
-        "https://openrouter.ai/api/v1/audio/transcriptions",
-        {
-          Authorization: `Bearer ${router}`,
-          "HTTP-Referer": openRouterReferer(),
-          "X-Title": openRouterTitle(),
-        },
-        { model, file, language },
-      );
-      if (out.ok) return NextResponse.json({ text: out.text, model, engine: "openrouter" });
-      errors.push(`openrouter:${model}: ${out.error}`);
+  for (const model of GEMINI_STT_MODELS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000);
+      const res = await fetch(`${apiBase()}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
+            },
+          ],
+          generationConfig: { temperature: 0, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } },
+        }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const raw = await res.text().catch(() => "");
+      let json: {
+        error?: { message?: string };
+        candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+      } = {};
+      try {
+        json = raw ? JSON.parse(raw) : {};
+      } catch {
+        /* non-JSON error page */
+      }
+      if (!res.ok) {
+        errors.push(`gemini:${model}: ${json.error?.message || `HTTP ${res.status}`}`);
+        continue;
+      }
+      const text = (json.candidates?.[0]?.content?.parts || [])
+        .filter((p) => !p.thought && typeof p.text === "string")
+        .map((p) => p.text || "")
+        .join("")
+        .trim();
+      if (text) return NextResponse.json({ text, model, engine: "gemini" });
+      errors.push(`gemini:${model}: empty transcript`);
+    } catch (err) {
+      errors.push(`gemini:${model}: ${(err as Error).message}`);
     }
   }
 
   return NextResponse.json({
     text: "",
     engine: "none",
-    note: `Whisper unavailable - use the browser microphone. (${errors.slice(0, 3).join(" | ")})`,
+    note: `Gemini transcription unavailable - use the browser microphone. (${errors.slice(0, 3).join(" | ")})`,
   });
-}
-
-async function postMultipart(
-  url: string,
-  headers: Record<string, string>,
-  opts: { model: string; file: File; language: string },
-): Promise<{ ok: boolean; text: string; error: string }> {
-  const forward = new FormData();
-  forward.set("model", opts.model);
-  forward.set("file", opts.file, opts.file.name || "speech.webm");
-  if (opts.language) forward.set("language", opts.language);
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
-    const res = await fetch(url, { method: "POST", headers, body: forward, signal: ctrl.signal });
-    clearTimeout(timer);
-    const json = (await res.json().catch(() => ({}))) as {
-      text?: string;
-      error?: { message?: string } | string;
-    };
-    const text = typeof json.text === "string" ? json.text.trim() : "";
-    if (res.ok && text) return { ok: true, text, error: "" };
-    const message =
-      typeof json.error === "string" ? json.error : json.error?.message || `HTTP ${res.status}`;
-    return { ok: false, text: "", error: message };
-  } catch (err) {
-    return { ok: false, text: "", error: (err as Error).message };
-  }
 }

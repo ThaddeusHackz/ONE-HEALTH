@@ -60,7 +60,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     "ONE HEALTH GHANA turns surveillance files, photographs, and weekly counts into probabilistic forecasts for the Ghana Health Service. Human, animal, and environmental signals share one white desk.",
   heroPrimary: "Open forecast desk",
   heroSecondary: "Read the modified workbook",
-  heroCard: "16 regions · One Health signals · OpenRouter fallback · voice, vision, search, climate",
+  heroCard: "16 regions · One Health signals · Gemini fallback chain · voice, vision, search, climate",
   pillarsTitle: "Three pillars, one Ghana desk",
   pillarsBody:
     "Most emerging infections start where people, animals, and the environment meet - live-bird markets in Accra, rodent harvest stores in Oti, flood water in Odaw, harmattan dust in the Upper East.",

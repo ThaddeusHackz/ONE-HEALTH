@@ -1,5 +1,12 @@
 # Render deployment audit — will it run, and will the AI work?
 
+> **SUPERSEDED — historical record.** This document describes the platform when it
+> still ran on OpenRouter. On 2026-08-29 the product was migrated to a **single
+> Gemini engine** (`lib/llm.ts`, one `GEMINI_API_KEY`); no OpenRouter key, slug,
+> env var or code path remains. Kept unedited as an audit trail. For the current
+> architecture see [`GEMINI_MIGRATION_2026-08-29.md`](GEMINI_MIGRATION_2026-08-29.md)
+> and [`AGENT_FORENSIC.md`](AGENT_FORENSIC.md).
+
 Date: 2026-08-24
 Target: `one-health-ghana.onrender.com` (free web service + free Postgres, blueprint `render.yaml`)
 Method: live probes against the deployed service, Render's own documentation, and the

@@ -8,11 +8,11 @@ import { logActivity, recordAudit, saveDB, uid } from "./store";
  * Document + image reading for the Vision Lab, One Health ingest and every
  * other surface that must SEE a file.
  *
- * VISION IS GEMINI-ONLY. It runs on the independent GEMINI_API_KEY from Google
- * AI Studio (aistudio.google.com/apikey) - never on the OpenRouter key. There
- * is deliberately NO OpenRouter vision fallback: the platform's contract is
- * that one key (the Gemini key) is the vision engine, so a failure says so
- * plainly instead of silently switching providers.
+ * VISION IS GEMINI. It runs on the GEMINI_API_KEY from Google AI Studio
+ * (aistudio.google.com/apikey) - the single key behind every AI feature here.
+ * There is deliberately NO second provider: the platform's contract is that
+ * one key is the whole engine, so a failure says so plainly instead of
+ * silently switching providers.
  */
 export async function analyzeUploads(opts: {
   files: File[];
@@ -81,7 +81,7 @@ ${textBlock || "(no text layer - rely on vision / file parts)"}`;
     analysis =
       `No GEMINI_API_KEY is configured, so the vision engine is off.\n\n` +
       `Set GEMINI_API_KEY (an independent key from https://aistudio.google.com/apikey) to read images, PDFs and scans. ` +
-      `Vision and document reading run ONLY on the Gemini key - the OpenRouter key is never used to see files.\n\n` +
+      `Vision and document reading run on the Gemini key - the same single key behind chat, research and images.\n\n` +
       `Local extracts stored:\n\n${textBlock.slice(0, 4000) || "(none - this file type has no local text layer)"}`;
     model = "no-vision-key";
   }

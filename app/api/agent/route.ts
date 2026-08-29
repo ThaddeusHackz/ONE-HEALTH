@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { openRouterConfigured } from "@/lib/openrouter";
+import { geminiConfigured } from "@/lib/llm";
 import { runAgent, type AgentTurn } from "@/lib/agent/run";
 import { TOOLS } from "@/lib/agent/tools";
 import { isValidModelSlug } from "@/lib/agent/models";
 import type { AgentAttachment, AgentMode } from "@/lib/agent/types";
-import type { ChatMessage } from "@/lib/openrouter";
+import type { ChatMessage } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -27,7 +27,7 @@ const VALID_MODES: AgentMode[] = ["chat", "research", "builder", "vision", "heal
 export function GET() {
   return NextResponse.json({
     ok: true,
-    configured: openRouterConfigured(),
+    configured: geminiConfigured(),
     tools: TOOLS.map((t) => ({
       name: t.name,
       description: t.description,

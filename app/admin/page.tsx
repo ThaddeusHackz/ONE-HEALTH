@@ -318,7 +318,7 @@ export default function AdminPage() {
               Keys live only in server environment variables. This probe never prints a full secret. This sandbox may block outbound TLS - Render will not.
             </p>
             <button onClick={() => void probe()} className="mt-4 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white">
-              Test OpenRouter, Tavily, OpenWeather, ElevenLabs
+              Test Gemini, Tavily, OpenWeather, ElevenLabs
             </button>
             <div className="mt-6 space-y-3">
               {checks.map((c) => (

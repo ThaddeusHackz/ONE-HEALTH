@@ -20,6 +20,13 @@ async function json(path, opts) {
   await check("health keys configured flags", async () => {
     const { res, body } = await json("/api/health");
     if (!res.ok || !body.ok) throw new Error("health not ok");
+    const caps = body.capabilities || {};
+    if (caps.engine !== "gemini") throw new Error(`engine is ${caps.engine}, expected gemini`);
+    if (typeof caps.gemini !== "boolean") throw new Error("no gemini capability flag");
+    if ("openrouter" in caps) throw new Error("an openrouter capability flag is still reported");
+    if (!Array.isArray(caps.modelChain) || caps.modelChain.some((m) => m.includes("/"))) {
+      throw new Error("the reported model chain is not a Gemini chain");
+    }
   });
   await check("public config", async () => {
     const { body } = await json("/api/config");
@@ -223,9 +230,9 @@ async function json(path, opts) {
     if (i.status !== 413) throw new Error("ingest expected 413, got " + i.status);
   });
 
-  await check("transcribe refuses audio over the 25 MB Whisper limit", async () => {
+  await check("transcribe refuses audio over the 18 MB Gemini inline limit", async () => {
     const fd = new FormData();
-    fd.append("audio", new File([Buffer.alloc(26 * 1024 * 1024, 1)], "huge.webm", { type: "audio/webm" }));
+    fd.append("audio", new File([Buffer.alloc(19 * 1024 * 1024, 1)], "huge.webm", { type: "audio/webm" }));
     const res = await fetch(base + "/api/transcribe", { method: "POST", body: fd });
     if (res.status !== 413) throw new Error("expected 413, got " + res.status);
   });

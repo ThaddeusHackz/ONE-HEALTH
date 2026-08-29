@@ -14,11 +14,11 @@ import { hydrateFromPostgres } from "./lib/store";
 export async function bootstrap(): Promise<void> {
   await hydrateFromPostgres();
 
-  // Warm the OpenRouter model-catalogue cache in the background so the first
-  // chat turn never waits on it. A failure here is invisible - the chain then
+  // Warm the Gemini model-catalogue cache in the background so the first chat
+  // turn never waits on it. A failure here is invisible - the chain then
   // filters itself on the first real request (or runs unfiltered).
-  void import("./lib/openrouter")
-    .then((or) => or.liveModels([...or.CHAT_MODELS, ...or.FREE_MODELS]))
+  void import("./lib/llm")
+    .then((llm) => llm.liveModels([...llm.CHAT_MODELS, ...llm.FREE_MODELS]))
     .catch(() => undefined);
 
   /**

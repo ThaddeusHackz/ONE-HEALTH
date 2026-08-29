@@ -21,7 +21,7 @@ const MAX_CITED = 12;
  *
  * THE ENGINE IS GEMINI-ONLY. Query decomposition and final synthesis both run
  * on the independent GEMINI_API_KEY from Google AI Studio (the same key that
- * powers vision). The OpenRouter key is never touched by research: if the
+ * powers vision, chat and tools). If the
  * Gemini key is missing or every Gemini model fails, the run degrades to a
  * deterministic, source-listed digest instead of silently answering on
  * another provider.
@@ -84,14 +84,14 @@ export async function deepResearch(opts: { question: string; focus: string }): P
 
   /**
    * No Gemini key: live sources are still gathered, but the synthesis step is
-   * OFFLINE BY DESIGN - it must not quietly run on the OpenRouter chat chain.
+   * OFFLINE BY DESIGN - it must not quietly answer without the research engine.
    */
   if (!geminiConfigured()) {
     return {
       question,
       queries: limited,
       citations: cited.slice(0, 10).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet })),
-      markdown: `## Deep research (engine offline)\n\n**Question:** ${question}\n\nLive sources were retrieved, but deep research synthesis runs ONLY on GEMINI_API_KEY (the independent Gemini key from aistudio.google.com/apikey) and it is not configured. Add it to synthesise a full brief; the sources below are the raw material.\n\n${hits
+      markdown: `## Deep research (engine offline)\n\n**Question:** ${question}\n\nLive sources were retrieved, but deep research synthesis runs on GEMINI_API_KEY (Google AI Studio - aistudio.google.com/apikey) and it is not configured. Add it to synthesise a full brief; the sources below are the raw material.\n\n${hits
         .slice(0, 8)
         .map((h, i) => `${i + 1}. [${h.title}](${h.url})\n   ${h.snippet}`)
         .join("\n\n")}`,

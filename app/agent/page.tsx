@@ -30,19 +30,19 @@ import { PINNABLE_MODELS } from "@/lib/agent/models";
 import type { WorkspaceFile } from "@/lib/agent/types";
 
 interface KeyStatus {
-  openrouter: boolean;
+  gemini: boolean;
   search: boolean;
   voice: boolean;
   weather: boolean;
   stockImages: boolean;
   imageGen: boolean;
-  lastOpenRouterError: string | null;
+  lastGeminiError: string | null;
 }
 
 /**
  * The model dropdown: "Auto (fallback chain)" walks the server chain from
- * openai/gpt-4.1-mini down to the free models; any pinned slug is sent to
- * OpenRouter ALONE - the pinned version is the version that answers.
+ * gemini-2.5-flash down to the light free-tier models; any pinned slug goes to
+ * Gemini ALONE - the pinned version is the version that answers.
  */
 const MODEL_GROUPS = Array.from(
   PINNABLE_MODELS.reduce((map, m) => {
@@ -126,7 +126,7 @@ export default function AgentPage() {
   const statusChips = useMemo(() => {
     if (!keys) return [];
     return [
-      { label: "OpenRouter brain", on: keys.openrouter, icon: Sparkles },
+      { label: "Gemini brain", on: keys.gemini, icon: Sparkles },
       { label: "Live web (Tavily)", on: keys.search, icon: Search },
       { label: "Vision + Research + Images (Gemini)", on: keys.imageGen, icon: ImageIcon },
       { label: "Voice (ElevenLabs)", on: keys.voice, icon: Radio },
@@ -215,10 +215,10 @@ export default function AgentPage() {
                   );
                 })}
               </div>
-              {keys && !keys.openrouter && (
+              {keys && !keys.gemini && (
                 <p className="mt-2 rounded-xl bg-gold-soft px-2 py-1.5 text-[11px] text-ink">
-                  Add <span className="a-mono">OPENROUTER_API_KEY</span> on Render to switch on reasoning;
-                  <span className="a-mono">GEMINI_API_KEY</span> switches on vision, deep research and image generation.
+                  Add <span className="a-mono">GEMINI_API_KEY</span> on Render to switch on the engine: reasoning,
+                  tools, vision, deep research, image generation and speech all run on that one key.
                 </p>
               )}
             </div>
@@ -268,7 +268,7 @@ export default function AgentPage() {
                 value={settings.model}
                 onChange={(e) => patch({ model: e.target.value })}
                 className="a-mono max-w-[16rem] rounded-xl border border-line bg-white px-2 py-1.5 text-[11px]"
-                title="Auto walks the fallback chain from openai/gpt-4.1-mini down. Pin any model and OpenRouter receives that slug alone - the pinned version is the version that answers."
+                title="Auto walks the Gemini fallback chain from gemini-2.5-flash down. Pin any model and the server calls that slug alone - the pinned version is the version that answers."
               >
                 <option value="">Auto (fallback chain)</option>
                 {MODEL_GROUPS.map((g) => (

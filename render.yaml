@@ -1,11 +1,16 @@
 # Blueprint: free web + free Postgres so history survives web restarts.
-# Required dashboard secrets: OPENROUTER_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
-# Optional dashboard secrets that light up the AI Agent tab:
-#   TAVILY_API_KEY (live web + deep research)  UNSPLASH_ACCESS_KEY (stock photos)
-#   ELEVENLABS_API_KEY (voice out)  OPENAI_API_KEY (Whisper voice in)
+# Required dashboard secrets: GEMINI_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL.
+#
+# GEMINI_API_KEY (https://aistudio.google.com/apikey) is the whole AI engine:
+#   chat + reasoning, the agentic loop and tool calling, vision (every file and
+#   image read), deep research, image generation, speech-to-text and
+#   text-to-speech. GEMINI_MODELS / GEMINI_IMAGE_MODELS override the model chains.
+#
+# Optional dashboard secrets that light up extra surfaces:
+#   TAVILY_API_KEY (live web + deep research sources)
+#   UNSPLASH_ACCESS_KEY (stock photos)
+#   ELEVENLABS_API_KEY (premium voice out; Gemini TTS is the fallback)
 #   OPENWEATHER_API_KEY (climate pillar)
-#   GEMINI_API_KEY - powers vision (all file/image reading), deep research and
-#   image generation. GEMINI_MODELS / GEMINI_IMAGE_MODELS override model chains.
 
 databases:
   - name: one-health-db
@@ -27,17 +32,11 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22.12.0"
-      - key: OPENROUTER_APP_TITLE
-        value: ONE HEALTH GHANA
       - key: DATABASE_URL
         fromDatabase:
           name: one-health-db
           property: connectionString
       - key: NEXT_PUBLIC_SITE_URL
-        sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: OPENROUTER_HTTP_REFERER
         sync: false
       - key: ADMIN_EMAIL
         value: admin@ghs.gov.gh
@@ -48,6 +47,14 @@ services:
       - key: SESSION_SECRET
         sync: false
       # Dashboard secrets - never pin empty strings here or a Blueprint apply wipes keys.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODELS
+        sync: false
+      - key: GEMINI_IMAGE_MODELS
+        sync: false
+      - key: GEMINI_TTS_VOICE
+        sync: false
       - key: TAVILY_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
@@ -56,17 +63,7 @@ services:
         sync: false
       - key: OPENWEATHER_API_KEY
         sync: false
-      - key: OPENROUTER_MODELS
-        sync: false
       - key: UNSPLASH_ACCESS_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_MODELS
-        sync: false
-      - key: GEMINI_IMAGE_MODELS
         sync: false
       - key: AGENT_MAX_STEPS
         sync: false

@@ -4,7 +4,7 @@ Builds on the original illustrated edition and adds:
   Part II  - full forensic scan of the Phase 2 package and the live host
   Part III - deep technical walkthrough of every production system
   Part IV  - classroom notebook walkthrough
-  Part V   - appendices (real worked example, OpenRouter groups, deployment, glossary)
+  Part V   - appendices (real worked example, the Gemini model chain, deployment, glossary)
 """
 
 from pathlib import Path
@@ -159,7 +159,7 @@ def part_cover(st):
         Paragraph("Ghana Health Service · Veterinary Services Directorate · EPA · Noguchi · One Health Secretariat", st["small"]),
         Spacer(1, 5 * mm),
         Paragraph(
-            "Python · Next.js production desk · OpenRouter multi-model fallback · Vision · Voice · Web search",
+            "Python · Next.js production desk · Gemini multi-model fallback · Vision · Voice · Web search",
             st["small"],
         ),
         Spacer(1, 8 * mm),
@@ -181,11 +181,11 @@ def part_howto(st):
             st["body"],
         ),
         Paragraph(
-            "The professor asked for the next step: modify the workbook so the class can walk into a working national system for Ghana only. This edition therefore (1) replaces empty figure boxes with real diagrams, (2) retargets every example from a generic country to Ghana’s sixteen regions and One Health disease set, (3) adds document/image ingestion and vision, (4) replaces a single Gemini key with an OpenRouter fallback chain, and (5) describes the white production website that implements the same pipeline.",
+            "The professor asked for the next step: modify the workbook so the class can walk into a working national system for Ghana only. This edition therefore (1) replaces empty figure boxes with real diagrams, (2) retargets every example from a generic country to Ghana’s sixteen regions and One Health disease set, (3) adds document/image ingestion and vision, (4) turns the single Gemini key into a filtered multi-model Gemini fallback chain, and (5) describes the white production website that implements the same pipeline.",
             st["body"],
         ),
         Paragraph(
-            "What is new in this expanded edition: a complete forensic scan of the original package and of the live host (Part II), a deep technical walkthrough of every production subsystem with the actual constants, thresholds and request flows from the code (Part III), a module-by-module guide to the companion notebook (Part IV), and appendices with a real worked forecast, the full OpenRouter chain, deployment steps, glossary and verification checklist (Part V). Nothing here invents capability: every number and threshold in Part III was read from the repository’s TypeScript and Python source.",
+            "What is new in this expanded edition: a complete forensic scan of the original package and of the live host (Part II), a deep technical walkthrough of every production subsystem with the actual constants, thresholds and request flows from the code (Part III), a module-by-module guide to the companion notebook (Part IV), and appendices with a real worked forecast, the full Gemini model chain, deployment steps, glossary and verification checklist (Part V). Nothing here invents capability: every number and threshold in Part III was read from the repository’s TypeScript and Python source.",
             st["body"],
         ),
         Paragraph("Dataset for the teaching notebook", st["h2"]),
@@ -210,9 +210,9 @@ def part_howto(st):
             [
                 "Part I - the original twenty teaching modules, each with a short “in production” note.",
                 "Part II - the forensic scan: what the original PDF really is, the defects found in the companion code, and what the live host taught us.",
-                "Part III - the deep dive: every system (statistical engine, APIs, storage, OpenRouter, vision, voice, search, climate, DHIMS2, nowcast, field briefs, admin, hosting, security) explained as it actually runs.",
+                "Part III - the deep dive: every system (statistical engine, APIs, storage, the Gemini engine, vision, voice, search, climate, DHIMS2, nowcast, field briefs, admin, hosting, security) explained as it actually runs.",
                 "Part IV - the classroom notebook, module by module, and how it maps to the production engine.",
-                "Part V - appendices: a worked example with real engine output, the full OpenRouter chain, Render deployment, glossary and sources.",
+                "Part V - appendices: a worked example with real engine output, the full Gemini model chain, Render deployment, glossary and sources.",
             ],
             st,
         ),
@@ -235,7 +235,7 @@ def part_howto(st):
         ("Part II - Forensic scan of the Phase 2 package and the live host", [
             "What the original PDF actually is",
             "Defects found in the companion code",
-            "OpenRouter fallback - verifying the architecture",
+            "Model fallback - verifying the architecture",
             "Live-host findings that changed the code",
         ]),
         ("Part III - How the production system works", [
@@ -245,7 +245,7 @@ def part_howto(st):
             "System 4 - The statistical engine: evaluation, ensemble, alerts",
             "System 5 - The forecast endpoint, end to end",
             "System 6 - Storage: db.json, event archive, Postgres",
-            "System 7 - OpenRouter chain internals",
+            "System 7 - Gemini engine internals",
             "System 8 - Vision Lab pipeline",
             "System 9 - The redaction gate",
             "System 10 - Voice in and voice out",
@@ -267,7 +267,7 @@ def part_howto(st):
         ]),
         ("Part V - Appendices", [
             "Appendix A - Worked example: malaria, national, 4-week horizon (real engine output)",
-            "Appendix B - The full OpenRouter chain, grouped by three",
+            "Appendix B - The full Gemini model chain",
             "Appendix C - Render deployment and secrets",
             "Appendix D - Glossary",
             "Appendix E - Sources",
@@ -352,11 +352,11 @@ def part_modules(st):
 
         Paragraph("Module 3 - Two environments", st["h1"]),
         Paragraph(
-            "Google Colab remains the classroom. The production desk is the Next.js application in this repository: statistical engine in TypeScript, intelligence through OpenRouter, files through the Vision Lab, voice through the Web Speech API (and optional Whisper / ElevenLabs). The Colab session still evaporates; the Render service persists. Secrets still never belong in a notebook cell or in NEXT_PUBLIC_* variables.",
+            "Google Colab remains the classroom. The production desk is the Next.js application in this repository: statistical engine in TypeScript, intelligence through the Gemini engine, files through the Vision Lab, voice through the Web Speech API (and optional Gemini speech / ElevenLabs). The Colab session still evaporates; the Render service persists. Secrets still never belong in a notebook cell or in NEXT_PUBLIC_* variables.",
             st["body"],
         ),
         img("system-architecture.png", 84 * mm),
-        Paragraph("Figure 3. Production architecture: artefacts in, leakage-safe models, OpenRouter fallback, Ghana command UI.", st["cap"]),
+        Paragraph("Figure 3. Production architecture: artefacts in, leakage-safe models, Gemini model fallback, Ghana command UI.", st["cap"]),
         Paragraph("In production - the statistical engine is pure TypeScript (lib/forecast.ts) so the website needs no Python at runtime. The notebook remains the reproducible proof; the site is the demonstration.", st["prod"]),
 
         Paragraph("Module 4-5 - Ingest and clean, including pictures", st["h1"]),
@@ -420,7 +420,7 @@ def part_modules(st):
 
         Paragraph("Module 16-19 - Interpretation, AI, ethics", st["h1"]),
         Paragraph(
-            "If lag_1 dominates feature importance, last week is the best statistical predictor of this week. That is not a causal discovery. OpenRouter (classroom: Gemini) may draft code, explain ADF p-values, and write a 180-word briefing. It must never decide that an outbreak exists, that a point is an error, that a variable is epidemiologically valid, or that an intervention should launch.",
+            "If lag_1 dominates feature importance, last week is the best statistical predictor of this week. That is not a causal discovery. The Gemini engine may draft code, explain ADF p-values, and write a 180-word briefing. It must never decide that an outbreak exists, that a point is an error, that a variable is epidemiologically valid, or that an intervention should launch.",
             st["body"],
         ),
         Paragraph(
@@ -488,7 +488,7 @@ def part_forensic(st):
             ["7", "Missing modules", "Modules 0, 3, 11, 17-20 exist in the PDF, not as executable cells", "Documented in the notebook markdown and this workbook"],
             ["8", "No images", "Companion is text only", "Platform ships generated figures"],
             ["9", "Single model", "Only one ML path taught", "Baselines + ridge + forest + Holt + ensemble on the desk"],
-            ["10", "One Gemini key", "Single-vendor dependency", "OpenRouter multi-model fallback chain"],
+            ["10", "One Gemini model, no fallback", "A single retired or rate-limited slug took the whole desk down", "A filtered multi-model Gemini chain: catalogue-checked, quota-rotating, dead-slug caching"],
         ],
         [10 * mm, 32 * mm, 56 * mm, 72 * mm],
         st,
@@ -496,24 +496,24 @@ def part_forensic(st):
     ))
     out += [
         Spacer(1, 3 * mm),
-        Paragraph("FS-3 - OpenRouter fallback: verifying the architecture", st["h1"]),
+        Paragraph("FS-3 - Model fallback: verifying the architecture", st["h1"]),
         Paragraph(
             "The supplied fallback report is correct in architecture and this repository implements it. The verified design:",
             st["body"],
         ),
         bullets(
             [
-                "One OPENROUTER_API_KEY - no per-vendor keys needed.",
-                "The request body carries models: [...] - a cross-provider priority chain.",
-                "provider.allow_fallbacks: true covers same-model host failover.",
-                "A 429 or 5xx on one vendor moves to the next; a 402 (OpenRouter balance empty) stops the paid chain.",
+                "One GEMINI_API_KEY - it powers chat, tools, vision, research, images and speech.",
+                "The model chain is an ordered priority list walked one model per request.",
+                "The chain is filtered against the live model catalogue for that key before any request goes out.",
+                "A 429 or 5xx on one model moves to the next; a rejected key stops the chain immediately.",
                 "Failed attempts are not billed.",
                 "Keys live only in server-side environment variables - never in browser JavaScript.",
             ],
             st,
         ),
         Paragraph(
-            "One correction learned from the live host: OpenRouter (2026) accepts at most THREE slugs per request models array. A longer list returns HTTP 400 with the message “'models' array must have 3 items or fewer.” The production code therefore walks the full chain in groups of three (System 7, Appendix B).",
+            "One correction learned from the 2026-08-29 migration: the Gemini API carries the model slug in the URL, so exactly ONE model can be tried per request - there is no models array to fall back through. The production code therefore walks the full chain one model at a time and reports which model actually answered (System 7, Appendix B).",
             st["body"],
         ),
         Paragraph("FS-4 - Live-host findings that changed the code", st["h1"]),
@@ -522,7 +522,7 @@ def part_forensic(st):
     out.append(table(
         ["Probe", "Live result", "Root cause", "Fix shipped"],
         [
-            ["OpenRouter", "HTTP 400 - \"'models' array must have 3 items or fewer\"", "Chain sent more than three slugs in one request", "Chunk fallback into groups of three; auto-slice oversized payloads (lib/openrouter.ts)"],
+            ["Gemini engine", "HTTP 404 on retired slugs; MAX_TOKENS with no text on 2.5 models", "Dead slugs still in the chain; hidden thinking ate the whole output budget", "Filter the chain against the live catalogue, cache dead slugs, disable thinking by default and retry a starved response (lib/llm.ts)"],
             ["Tavily", "200 OK", "-", "-"],
             ["OpenWeather", "200 OK", "-", "-"],
             ["ElevenLabs", "401 missing_permissions on /v1/user", "Restricted keys cannot read the user endpoint but can still speak", "Probe /v1/voices first; TTS route unchanged"],
@@ -570,7 +570,7 @@ def part_systems(st):
     out = [
         Paragraph("PART III - How the production system works", st["h1"]),
         Paragraph(
-            "This part explains every subsystem exactly as it runs in the repository: the statistical engine, the API layer, storage, OpenRouter, vision, voice, search, climate, DHIMS2, nowcast, field briefs, admin, hosting and security. Constants, thresholds and request flows below were read from the source files, not from memory. File names are given so you can open the code and follow along.",
+            "This part explains every subsystem exactly as it runs in the repository: the statistical engine, the API layer, storage, the Gemini engine, vision, voice, search, climate, DHIMS2, nowcast, field briefs, admin, hosting and security. Constants, thresholds and request flows below were read from the source files, not from memory. File names are given so you can open the code and follow along.",
             st["body"],
         ),
         rule(st),
@@ -582,7 +582,7 @@ def part_systems(st):
                 "Next.js App Router (TypeScript) - pages in app/, API route handlers in app/api/.",
                 "Statistical engine: lib/forecast.ts (pure TypeScript, no runtime Python).",
                 "Persistence: data/db.json (JSON document store) + data/events.jsonl (append-only log) + optional Postgres snapshot (lib/pg-store.ts).",
-                "External services: OpenRouter (AI), Tavily/DuckDuckGo (search), OpenWeather (climate), ElevenLabs (voice out), Whisper via OpenRouter (voice in).",
+                "External services: Gemini (all AI - chat, tools, vision, research, images, speech), Tavily/DuckDuckGo (search), OpenWeather (climate), ElevenLabs (optional premium voice out).",
                 "Classroom proof: notebooks/ghana_one_health_forecasting.py (Python + statsmodels + scikit-learn).",
             ],
             st,
@@ -593,7 +593,7 @@ def part_systems(st):
                 "The browser calls a route handler, e.g. POST /api/forecast with {diseaseId: \"malaria\", regionId: \"national\", horizon: 4}.",
                 "The route reads server-side environment keys only (lib/env.ts). No key ever reaches the browser.",
                 "lib/forecast.ts builds or loads the weekly series, engineers leakage-safe features, trains baselines + ridge + forest, backtests on a chronological hold-out, builds the top-3 ensemble, and computes z / CUSUM alerts.",
-                "Optional AI steps (briefing, review) call lib/openrouter.ts, which walks the model chain in groups of three.",
+                "Optional AI steps (briefing, review) call lib/llm.ts, which walks the Gemini model chain one model per request.",
                 "The result is written to the store (lib/store.ts), appended to the event log (lib/archive.ts), and recorded in the audit (recordAudit).",
                 "The route returns JSON; the page renders points, intervals, scoreboard, alerts and narrative.",
             ],
@@ -604,8 +604,8 @@ def part_systems(st):
     out.append(table(
         ["Route", "Method", "What it does"],
         [
-            ["/api/health", "GET", "Service health: masked key presence, last OpenRouter error, store counts, archive size, Postgres flag"],
-            ["/api/diagnostics", "GET", "Live probes: OpenRouter (3-model payload), Tavily, OpenWeather, ElevenLabs (voices first)"],
+            ["/api/health", "GET", "Service health: masked key presence, last Gemini error, model chain, store counts, archive size, Postgres flag"],
+            ["/api/diagnostics", "GET", "Live probes: Gemini brain, Gemini vision, image generation, transcription, model chain, Tavily, OpenWeather, ElevenLabs (voices first), Unsplash"],
             ["/api/config", "GET", "Public CMS content, visible nav, knowledge cards"],
             ["/api/forecast", "GET", "Bundle for disease/region/horizon/district; ?snapshot=1 returns the 13-signal national board"],
             ["/api/forecast", "POST", "Bundle + optional 180-word AI briefing + forecast row saved + audit + reporting-delay nowcast"],
@@ -617,7 +617,7 @@ def part_systems(st):
             ["/api/ingest", "POST", "Multipart files through the same pipeline (used by the field desk)"],
             ["/api/search", "POST", "Tavily → DuckDuckGo fallback, Ghana-weighted domains; optional synthesis"],
             ["/api/tts", "POST", "ElevenLabs speech, else browser-TTS fallback note"],
-            ["/api/transcribe", "POST", "Whisper large-v3 via OpenRouter, else browser microphone guidance"],
+            ["/api/transcribe", "POST", "Gemini speech-to-text on an inline audio part, else browser microphone guidance"],
             ["/api/weather", "GET", "Ten Ghana watch-cities fetched in parallel from OpenWeather"],
             ["/api/briefing", "GET", "Morning sitrep: national snapshot + weather + search hits + AI 220-word brief"],
             ["/api/field-brief", "POST", "90-word CHPS field card in en/tw/ee/gaa/ha, speakable, with offline fallbacks"],
@@ -712,7 +712,7 @@ def part_systems(st):
             [
                 "Parse the body: diseaseId (default malaria), regionId (default national), districtId (optional), horizon (default 4, clamped 1-12), brief (bool), language.",
                 "bundleFor(): find an official series for the disease/region/district, resolve the district scale, call runForecast().",
-                "If brief && OpenRouter is configured: call completeWithSystem asking for a 180-word GHS briefing using ONLY the numbers provided, with the language instruction appended; temperature 0.25.",
+                "If brief && a Gemini key is configured: call completeWithSystem asking for a 180-word GHS briefing using ONLY the numbers provided, with the language instruction appended; temperature 0.25.",
                 "If the AI call fails, the briefing falls back to the local narrative (nowcast + outlook + limits) with model \"local-fallback: <reason>\" - the desk never dies because a vendor is down.",
                 "Save a ForecastRow (id, disease, region, latest, nextWeek, z, summary, createdAt) into db.json, capped at 200 rows.",
                 "Record an audit event (actor forecast, action forecast.run, model, detail with source=demonstration|official).",
@@ -730,31 +730,33 @@ def part_systems(st):
         Paragraph("lib/archive.ts appends every mutation as a JSON line to data/events.jsonl (append-only, never rewritten) and, if DATABASE_URL is set, to Postgres table ohg_events (ON CONFLICT DO NOTHING). The admin desk can download the raw log. Longevity rule from the README: this lasts decades only if the database is kept and backed up off-site - a free Render disk is wiped on sleep and will not last 89 years by itself.", st["body"]),
         Paragraph("Admin credentials are not stored in plain text: the seed admin is created with a random salt and an scrypt (N=default, 64-byte) hash, verified with timingSafeEqual. The default password comes from ADMIN_PASSWORD in the environment and must be changed for production.", st["body"]),
 
-        Paragraph("System 7 - OpenRouter chain internals", st["h1"]),
-        Paragraph("Where: lib/openrouter.ts. One sk-or- key. OpenRouter accepts at most three slugs per request, so the chain is walked in groups of three:", st["body"]),
+        Paragraph("System 7 - Gemini engine internals", st["h1"]),
+        Paragraph("Where: lib/llm.ts. One GEMINI_API_KEY. The Gemini API carries the model slug in the URL, so exactly one model is tried per request and the chain is walked one model at a time:", st["body"]),
         steps(
             [
-                "Build the ordered chain: extra env models (OPENROUTER_MODELS) → preferred → CHAT_MODELS → FREE_MODELS → openrouter/auto, de-duplicated.",
-                "Chunk into groups of at most 3; each group is sent with model = first slug, models = the group, provider {allow_fallbacks: true, sort: \"throughput\"}.",
-                "On 429 / 5xx / network error, move to the next group. On 401, or 403 with auth wording, stop - the key itself is rejected. On 402 / credit wording, stop the paid chain and retry with only :free models + openrouter/auto (free fallback after a drained balance).",
-                "If OpenRouter answers “models array must have 3 items or fewer” (a 400), retry the group with a single slug.",
-                "Record which group and model actually answered; the UI shows the real model name - fallback is a feature, not a mystery.",
-                "Timeouts are 75 s per request; empty or non-JSON responses are treated as failures; temperature default 0.35, max_tokens 2200.",
+                "Build the ordered chain: extra env models (GEMINI_MODELS) → preferred → CHAT_MODELS → FREE_MODELS, de-duplicated.",
+                "Filter that chain against GET /v1beta/models for this key, so a retired slug never even gets a request; if the catalogue is unreachable the chain is used unfiltered rather than blocking chat.",
+                "POST one model at a time to /v1beta/models/{slug}:generateContent (or :streamGenerateContent?alt=sse), authenticated with the x-goog-api-key header.",
+                "On 429 / 5xx / network error, move to the next model, then to the free-tier models. On a 400/401/403 key rejection, stop - the key itself is bad and retrying only wastes time. On 404, cache the slug dead for the process so it is never requested again.",
+                "If a model rejects tools, retry the SAME model without them so a tool-capable turn can never hard-fail.",
+                "Record which model actually answered; the UI shows the real model name - fallback is a feature, not a mystery.",
+                "Thinking is disabled by default (thinkingBudget 0) so a 2.5 model cannot spend its whole output budget on hidden reasoning and return no text; a starved MAX_TOKENS response is retried with a plain config and a bigger budget.",
+                "Timeouts are 75 s per request; empty or non-JSON responses are treated as failures; temperature default 0.35, max output 2200 tokens.",
             ],
             st,
         ),
         Paragraph("Chains by purpose", st["h2"]),
         bullets(
             [
-                "Chat: GPT-4.1-mini → Gemini 2.5 Flash → GPT-4o-mini → GPT-4.1 → Gemini 2.5 Pro → GPT-4o → Claude Sonnet 4 → Claude 3.5 Sonnet → DeepSeek Chat → Llama 3.3 70B → Mistral Large, then the :free set, then openrouter/auto.",
-                "Vision: Gemini 2.5 Flash → GPT-4o-mini → Gemini 2.5 Pro → GPT-4.1 → GPT-4o → Claude Sonnet 4 → Claude 3.5 Sonnet → Qwen2.5-VL 72B :free → Gemma 3 27B :free.",
-                "Fast (fallback after a vision failure): Gemini 2.5 Flash → GPT-4.1-mini → GPT-4o-mini → DeepSeek Chat → :free set.",
-                "Appendix B lists the complete groups as actually sent.",
+                "Chat: gemini-2.5-flash → gemini-2.5-pro → gemini-2.0-flash → gemini-flash-latest → gemini-2.5-flash-lite → gemini-2.0-flash-lite, then the free-tier set.",
+                "Vision: the same chain - photos and PDFs ride as inlineData parts on whichever model answers.",
+                "Fast (short, cheap calls such as memory distillation): gemini-2.5-flash-lite → gemini-2.0-flash-lite → gemini-2.0-flash.",
+                "Appendix B lists the complete chain in order.",
             ],
             st,
         ),
         Paragraph(
-            "The key is read only in route handlers (lib/env.ts also tolerates common mistyped names such as OPEN_ROUTER_API_KEY, OR_API_KEY, OPENAI-shaped names if they start with sk-or-). The diagnostics route probes with a 3-model payload asking for the literal reply OPENROUTER_OK - a cheap end-to-end check that the key, network path and model routing all work.",
+            "The key is read only in route handlers (lib/env.ts also accepts the common aliases GOOGLE_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, GEMINI_KEY and GOOGLE_GENAI_KEY, and rejects a pasted OpenRouter sk-or- key with a plain explanation instead of a mystery 400). The diagnostics route probes the live model catalogue and asks the first model for a one-word reply - a cheap end-to-end check that the key, network path and model routing all work.",
             st["body"],
         ),
 
@@ -768,7 +770,7 @@ def part_systems(st):
                 "The prompt demands: what each file actually contains (no invention), structured fields (disease/condition, Ghana region/district if present, dates, counts, facility), fitness for the weekly forecasting engine (usable / needs cleaning / reject), data-quality flags and possible identifiers WITHOUT repeating them, One Health relevance, confidence and the next human verification step.",
                 "visionAnalyze() sends up to 6 images and up to 3 PDF file-parts with the text block to the vision chain; if the vision chain fails entirely, it retries text-only on the fast chain.",
                 "The analysis and its model name are stored as DocumentRow entries (capped at 400) and the audit records actor, model and redactions.",
-                "If no OpenRouter key is set, the local extracts are still stored and shown - vision degrades, nothing else breaks.",
+                "If no Gemini key is set, the local extracts are still stored and shown - vision degrades with a labelled notice, nothing else breaks.",
             ],
             st,
         ),
@@ -800,7 +802,7 @@ def part_systems(st):
         bullets(
             [
                 "Voice in (browser): the Web Speech API records the officer’s question - no server round-trip, works offline for English and several Ghana-relevant accents depending on the device.",
-                "Voice in (server): /api/transcribe forwards the audio to OpenRouter’s audio transcriptions endpoint with model openai/whisper-large-v3; without a key it returns guidance to use the browser microphone.",
+                "Voice in (server): /api/transcribe sends the audio to Gemini as an inlineData part with a verbatim-transcription prompt; without a key it returns guidance to use the browser microphone.",
                 "Voice out: /api/tts sends up to 2,500 characters to ElevenLabs (model eleven_multilingual_v2, stability 0.45, similarity_boost 0.75, voice id from ELEVENLABS_VOICE_ID, default 21m00Tcm4TlvDq8ikWAM). If no key or an error, the client falls back to the device speech synthesizer - the field desk always has a voice.",
                 "Field briefs return a speakable field (markdown stripped) so the browser can read the card aloud in Twi, Ewe, Ga, Hausa or English.",
             ],
@@ -830,7 +832,7 @@ def part_systems(st):
                 "Duplicate week keys are summed and reported.",
                 "Missing weeks between first and last date are enumerated; completeness = present / (present + missing).",
                 "Warnings fire when completeness < 85%, negatives were clipped, duplicates existed, or fewer than 8 weeks (too short for a 4-week test window).",
-                "Uploading replaces any previous official series for the same disease/region/district, records the quality log, writes the append-only event, and asks OpenRouter for a 120-word DHIMS2 manager’s review (fitness, gaps, three cleaning actions) - never claiming the extract is error-free.",
+                "Uploading replaces any previous official series for the same disease/region/district, records the quality log, writes the append-only event, and asks the Gemini engine for a 120-word DHIMS2 manager’s review (fitness, gaps, three cleaning actions) - never claiming the extract is error-free.",
                 "A template CSV (12 weeks of Greater Accra cholera) is downloadable from ?template=1 so districts know the exact shape expected.",
             ],
             st,
@@ -875,7 +877,7 @@ def part_systems(st):
             ["/climate", "Parallel OpenWeather watch-cities plus a sitrep that may mix weather, search, and the ensemble."],
             ["/intelligence", "Ghana-locked chat, web search, voice in/out, language, live ensemble attached to the prompt."],
             ["/vision", "Vision Lab: PDF, Word, Excel, CSV, photos. Local text extract + multi-model vision. Redaction first."],
-            ["/extracts", "DHIMS2 / IDSR weekly CSV. Quality log, completeness, OpenRouter review, then the forecast uses that series."],
+            ["/extracts", "DHIMS2 / IDSR weekly CSV. Quality log, completeness, AI review, then the forecast uses that series."],
             ["/field", "Ninety-word CHPS card in English, Twi, Ewe, Ga or Hausa. Speak it."],
             ["/regions", "Sixteen official regions plus representative MMDAs. Unit of analysis is region-week."],
             ["/workbook", "This workbook - the modified Phase 2 teaching contract and the build log of every system."],
@@ -896,7 +898,7 @@ def part_systems(st):
     out.append(table(
         ["Variable", "Purpose", "Required"],
         [
-            ["OPENROUTER_API_KEY", "Chat, vision, briefing, extract review, field card, optional Whisper", "For live AI"],
+            ["GEMINI_API_KEY", "Everything AI: chat, tools, vision, deep research, briefing, extract review, field card, image generation, speech in and out", "For live AI"],
             ["ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME", "CMS login (scrypt-hashed; change the default)", "Yes"],
             ["SESSION_SECRET", "HMAC key for admin sessions and audit signatures", "Yes"],
             ["NEXT_PUBLIC_SITE_URL", "Safe public site URL used for OG metadata and Referer", "Yes"],
@@ -904,7 +906,7 @@ def part_systems(st):
             ["ELEVENLABS_API_KEY (+ VOICE_ID)", "Spoken briefings", "Optional"],
             ["OPENWEATHER_API_KEY", "Climate watch-cities", "Optional"],
             ["DATABASE_URL", "Postgres snapshot + event log for durability across web sleep", "Recommended"],
-            ["OPENROUTER_MODELS", "Extra model slugs tried first (comma-separated)", "Optional"],
+            ["GEMINI_MODELS", "Extra Gemini model slugs tried first (comma-separated)", "Optional"],
         ],
         [52 * mm, 92 * mm, 26 * mm],
         st,
@@ -931,7 +933,7 @@ def part_systems(st):
                 "No patient name, folder number, phone, or small-cell paediatric count in a prompt.",
                 "No API key in NEXT_PUBLIC_* or client JavaScript.",
                 "No global operations centre. Ghana only, unless the user is comparing an imported border risk.",
-                "OpenRouter may draft a briefing; it may not decide that an intervention launches. The officer owns the decision.",
+                "The AI may draft a briefing; it may not decide that an intervention launches. The officer owns the decision.",
             ],
             st,
         ),
@@ -1063,22 +1065,22 @@ def part_appendix(st):
             st["body"],
         ),
 
-        Paragraph("Appendix B - The full OpenRouter chain, grouped by three", st["h1"]),
+        Paragraph("Appendix B - The full Gemini model chain", st["h1"]),
         Paragraph(
-            "Chat chain as actually chunked (each group is one request; the first group that answers wins):",
+            "The Gemini API carries the model slug in the URL, so each request tries exactly ONE model. The chain is filtered against the live catalogue for your key, then walked in this order; the first model that answers wins and its real name is shown in the UI:",
             st["body"],
         ),
     ]
     out.append(table(
-        ["Group", "Slugs (sent together, in this order)"],
+        ["Order", "Model slug (one per request)"],
         [
-            ["1", "openai/gpt-4.1-mini · google/gemini-2.5-flash · openai/gpt-4o-mini"],
-            ["2", "openai/gpt-4.1 · google/gemini-2.5-pro · openai/gpt-4o"],
-            ["3", "anthropic/claude-sonnet-4 · anthropic/claude-3.5-sonnet · deepseek/deepseek-chat"],
-            ["4", "meta-llama/llama-3.3-70b-instruct · mistralai/mistral-large-2411"],
-            ["5 (free)", "meta-llama/llama-3.3-70b-instruct:free · google/gemma-3-27b-it:free · qwen/qwen-2.5-72b-instruct:free"],
-            ["6 (free)", "mistralai/mistral-7b-instruct:free · nousresearch/hermes-3-llama-3.1-405b:free"],
-            ["7 (auto)", "openrouter/auto"],
+            ["1", "gemini-2.5-flash - the workhorse: fast, cheap, tool-capable"],
+            ["2", "gemini-2.5-pro - hardest reasoning, slowest"],
+            ["3", "gemini-2.0-flash - previous generation, very stable"],
+            ["4", "gemini-flash-latest - Google's rolling alias"],
+            ["5", "gemini-2.5-flash-lite - cheapest 2.5, used for short calls"],
+            ["6", "gemini-2.0-flash-lite - last resort before the free tier"],
+            ["free", "the free-tier slugs, retried after a 429 exhausts the chain above"],
         ],
         [20 * mm, 150 * mm],
         st,
@@ -1086,7 +1088,7 @@ def part_appendix(st):
     out += [
         Spacer(1, 3 * mm),
         Paragraph(
-            "Vision chain: Gemini 2.5 Flash → GPT-4o-mini → Gemini 2.5 Pro → GPT-4.1 → GPT-4o → Claude Sonnet 4 → Claude 3.5 Sonnet → Qwen2.5-VL 72B :free → Gemma 3 27B :free (same three-per-group rule). A 402 (empty OpenRouter balance) stops the paid groups and retries the :free set plus openrouter/auto.",
+            "Retired slugs (gemini-1.5-flash, gemini-1.5-pro, gemini-1.0-pro, gemini-pro) and every vendor-prefixed form (openai/…, anthropic/…, even google/gemini-2.5-flash) are rejected by the pin validator: the Gemini API wants the bare slug, so a prefixed name is a guaranteed 404. A 429 rotates to the next model and finally to the free-tier set; a 404 caches that slug dead for the process so it is never requested twice.",
             st["body"],
         ),
 
@@ -1096,8 +1098,8 @@ def part_appendix(st):
                 "Push the branch (this session: arena/01a018b0-one-health).",
                 "Create a Web Service from render.yaml (or the Blueprint) - Node 20+, free tier.",
                 "Build: npm ci --include=dev && npm run build. Start: npm start (scripts/start.cjs binds 0.0.0.0 and honours $PORT).",
-                "Set secrets in the Environment tab: OPENROUTER_API_KEY, ADMIN_EMAIL, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL, and optionally TAVILY_API_KEY, ELEVENLABS_API_KEY, OPENWEATHER_API_KEY, DATABASE_URL, OPENROUTER_MODELS.",
-                "Open /api/health - expect openrouter: true and masked key; open /api/diagnostics for the live probes.",
+                "Set secrets in the Environment tab: GEMINI_API_KEY, ADMIN_EMAIL, ADMIN_PASSWORD, SESSION_SECRET, NEXT_PUBLIC_SITE_URL, and optionally TAVILY_API_KEY, ELEVENLABS_API_KEY, OPENWEATHER_API_KEY, DATABASE_URL, GEMINI_MODELS, GEMINI_IMAGE_MODELS, GEMINI_TTS_VOICE.",
+                "Open /api/health - expect gemini: true, engine: gemini and a masked key; open /api/diagnostics for the live probes.",
                 "Change the default ADMIN_PASSWORD immediately; keep the database backed up off-site for multi-decade retention.",
             ],
             st,
@@ -1105,8 +1107,8 @@ def part_appendix(st):
         Paragraph("Post-deploy verification (from the Render forensic pass)", st["h2"]),
         steps(
             [
-                "Open /api/health - expect openrouter: true and openrouterMaxModelsPerRequest: 3.",
-                "Open Admin → API desk → probe - OpenRouter should answer OPENROUTER_OK with a live model name, not a 400.",
+                "Open /api/health - expect gemini: true and maxModelsPerRequest: 1.",
+                "Open Admin → API desk → probe - the Gemini engine should answer with a live model name, not an error.",
                 "Intelligence: send “Greater Accra cholera watch, no names.” Expect a model name in the response, not the offline card.",
                 "Climate: Accra temperature should be live (not a placeholder).",
                 "Field brief: draft and speak - browser voice if the ElevenLabs key is restricted.",
@@ -1132,7 +1134,7 @@ def part_appendix(st):
         ),
         Paragraph("Appendix E - Sources", st["h1"]),
         Paragraph(
-            "OWID COVID-19 · WHO GHO and Disease Outbreak News · Ghana Health Service IDSR / DHIMS2 (official extracts, not scraped) · pandas, scikit-learn, statsmodels · OpenRouter routing documentation · original Phase 2 workbook (2026-08-19 Word export) · the ONE HEALTH GHANA repository itself (this workbook quotes its own code).",
+            "OWID COVID-19 · WHO GHO and Disease Outbreak News · Ghana Health Service IDSR / DHIMS2 (official extracts, not scraped) · pandas, scikit-learn, statsmodels · Google Gemini API documentation · original Phase 2 workbook (2026-08-19 Word export) · the ONE HEALTH GHANA repository itself (this workbook quotes its own code).",
             st["body"],
         ),
         Paragraph(

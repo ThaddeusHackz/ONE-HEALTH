@@ -1,7 +1,7 @@
 import { GHANA_CONTEXT, DISEASES, REGIONS } from "@/lib/ghana";
 import { nationalSnapshot, runForecast } from "@/lib/forecast";
 import { ghanaWeather } from "@/lib/weather";
-import type { ToolCallSpec } from "@/lib/openrouter";
+import type { ToolCallSpec } from "@/lib/llm";
 import { geminiConfigured, geminiVision } from "./gemini";
 import { redactText } from "@/lib/redact";
 import { recordAudit } from "@/lib/store";
@@ -237,7 +237,7 @@ export const TOOLS: ToolDefinition[] = [
       /**
        * VISION IS GEMINI-ONLY: it runs on the independent GEMINI_API_KEY from
        * Google AI Studio, no matter which chat model is pinned in the dropdown.
-       * There is no OpenRouter vision fallback - if the Gemini key is missing
+       * There is no second provider - if the Gemini key is missing
        * or the read fails, the tool says so loudly and the model is forbidden
        * from describing a file it never saw.
        */
@@ -259,7 +259,7 @@ export const TOOLS: ToolDefinition[] = [
             (geminiConfigured()
               ? `Tell the user the file could not be opened by the Gemini vision engine; do not describe its contents.`
               : `No GEMINI_API_KEY is configured. Vision runs ONLY on the Gemini key (from aistudio.google.com/apikey), ` +
-                `never on the OpenRouter key. Tell the user to add GEMINI_API_KEY, and do not describe the file's contents.`),
+                `the platform's single AI key. Tell the user to add GEMINI_API_KEY, and do not describe the file's contents.`),
         );
       }
 

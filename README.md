@@ -7,9 +7,9 @@ This repository turns the Phase 2 modelling workbook into a working system:
 - **AI Agent** (`/agent`) - reasoning, live web research, Gemini vision, image generation, an in-browser code sandbox with a full self-scan, charts, tables, long-term memory and 2 GB workspace uploads
 - probabilistic 4-week forecasts (baselines → ridge → random forest → ensemble)
 - IDSR-style z-score watches
-- OpenRouter multi-model intelligence: pin any model (used alone, never substituted) or run the Auto fallback chain
-- vision on photos, scans, and mixed files - powered by the Gemini API key in every mode
-- deep research synthesis on the Gemini API key
+- **One key for everything**: `GEMINI_API_KEY` powers chat, tools, vision, deep research, image generation and speech. Pin any Gemini model (used alone, never substituted) or run the Auto fallback chain
+- vision on photos, scans, and mixed files - in every mode
+- deep research synthesis with cited sources
 - voice in/out
 - Ghana-weighted web search
 - a white 2026 interface in Ghana flag + clinical teal
@@ -20,7 +20,7 @@ This repository turns the Phase 2 modelling workbook into a working system:
 
 ```bash
 cp .env.example .env.local
-# put OPENROUTER_API_KEY (chat) and GEMINI_API_KEY (vision + research) in .env.local - never commit them
+# put GEMINI_API_KEY in .env.local - one key runs the whole AI engine. Never commit it.
 npm install
 npm run dev
 ```
@@ -33,19 +33,19 @@ Full forensic scan (typecheck + lint + the real engine code against mock provide
 npm run forensic
 ```
 
-Without keys the statistical engine, regional board, the agent sandbox and offline briefings still run. Reasoning (chat) needs OPENROUTER_API_KEY; vision, deep research and image generation need the independent GEMINI_API_KEY from Google AI Studio - the two never mix.
+Without keys the statistical engine, regional board, the agent sandbox and offline briefings still run. Everything AI - reasoning, the agentic loop, vision, deep research, image generation, speech in and out - runs on a single `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey). One key, one bill, one quota.
 
 ### Optional keys that light up more of the AI Agent
 
 | Variable | Unlocks |
 |---|---|
-| `GEMINI_API_KEY` | **vision on every surface** (agent, Vision Lab, ingest), **deep research synthesis**, **image generation** |
+| `GEMINI_API_KEY` | **everything**: chat + reasoning, the agentic loop and tool calling, vision on every surface (agent, Vision Lab, ingest), deep research synthesis, image generation, speech-to-text, text-to-speech |
 | `TAVILY_API_KEY` | live web search, deep research (DuckDuckGo fallback otherwise) |
 | `UNSPLASH_ACCESS_KEY` | real stock photography (Tavily images otherwise) |
-| `OPENAI_API_KEY` | Whisper speech-to-text directly (OpenRouter route otherwise) |
-| `ELEVENLABS_API_KEY` | high-quality spoken answers (device voice otherwise) |
+| `ELEVENLABS_API_KEY` | premium spoken answers (Gemini TTS, then the device voice, otherwise) |
 | `OPENWEATHER_API_KEY` | live climate pillar |
 | `GEMINI_MODELS` | comma-separated Gemini text/vision models tried first |
+| `GEMINI_TTS_VOICE` | prebuilt Gemini voice name for spoken briefings (default `Kore`) |
 | `GEMINI_IMAGE_MODELS` | comma-separated Gemini image models tried first |
 | `AGENT_MAX_STEPS` | agentic tool steps per turn (default 8, max 24) |
 
@@ -81,8 +81,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Required for live AI:
 
 | Variable | Purpose | Where to get it |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Chat reasoning + the Auto fallback chain (never vision or research) | https://openrouter.ai/keys |
-| `GEMINI_API_KEY` | **Vision on every file/photo/PDF, deep research, image generation** - an independent key from Google AI Studio | https://aistudio.google.com/apikey |
+| `GEMINI_API_KEY` | **The whole AI engine** - chat, tool calling, vision on every file/photo/PDF, deep research, image generation, speech in and out | https://aistudio.google.com/apikey |
 | `TAVILY_API_KEY` | Cited web search | https://tavily.com |
 | `ELEVENLABS_API_KEY` | Spoken briefings | https://elevenlabs.io |
 | `OPENWEATHER_API_KEY` | Optional climate context | https://openweathermap.org |
@@ -91,9 +90,9 @@ Do **not** put secrets in `NEXT_PUBLIC_*`. That would publish them to every visi
 
 ## Keys you may add later
 
-- **OpenRouter** is enough for most of the desk (many vendors behind one bill).
+- **Gemini** is the only key the desk actually needs - it runs every AI surface.
 - **Tavily** if you want cleaner citations than the DuckDuckGo fallback.
-- **ElevenLabs** if device TTS is not good enough for Twi-adjacent English briefings.
+- **ElevenLabs** if Gemini TTS is not good enough for Twi-adjacent English briefings.
 - **Official GHS / DHIMS2 extracts** - not an API key, but the data that must replace the demonstration series before operational use.
 
 We cannot mint API keys for you. Create them on those sites and paste them into Render’s Environment tab.
@@ -103,7 +102,7 @@ We cannot mint API keys for you. Create them on those sites and paste them into 
 ```
 app/            Next.js App Router (pages + API)
 components/     Shell, markdown, disclaimer
-lib/            Ghana ontology, forecast engine, OpenRouter, search
+lib/            Ghana ontology, forecast engine, the Gemini engine (lib/llm.ts), search
 public/images/  Workbook and UI figures (the missing PDF pictures)
 notebooks/      Ghana companion notebook
 docs/           Forensic scan + modified workbook notes

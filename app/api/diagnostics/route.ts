@@ -2,25 +2,20 @@ import { NextResponse } from "next/server";
 import {
   elevenLabsKey,
   elevenLabsVoice,
+  geminiKey,
   maskKey,
-  openRouterKey,
-  openRouterReferer,
-  openRouterTitle,
   openWeatherKey,
   tavilyKey,
   unsplashKey,
-  whisperKey,
 } from "@/lib/env";
 import { GEMINI_IMAGE_MODEL_CHAIN, listGeminiModels } from "@/lib/agent/media";
-import { geminiPing } from "@/lib/agent/gemini";
-import { geminiKey } from "@/lib/env";
+import { geminiPing, geminiVision } from "@/lib/agent/gemini";
 import {
   CHAT_MODELS,
   FREE_MODELS,
-  lastOpenRouterError,
-  MAX_MODELS_PER_REQUEST,
+  lastGeminiError,
   modelCatalogueStatus,
-} from "@/lib/openrouter";
+} from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,43 +40,25 @@ export async function GET() {
   const checks: Check[] = [];
 
   checks.push(
-    await probe("openrouter", maskKey(openRouterKey()), async () => {
-      const key = openRouterKey();
-      if (!key) return { id: "openrouter", ok: false, status: 0, detail: "missing key", masked: "not set" };
-      const models = ["google/gemini-2.5-flash", "openai/gpt-4.1-mini", "openai/gpt-4o-mini"].slice(
-        0,
-        MAX_MODELS_PER_REQUEST,
-      );
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": openRouterReferer(),
-          "X-Title": openRouterTitle(),
-        },
-        body: JSON.stringify({
-          model: models[0],
-          models,
-          provider: { allow_fallbacks: true },
-          messages: [{ role: "user", content: "Reply with exactly OPENROUTER_OK" }],
-          max_tokens: 16,
-        }),
-      });
-      const json = (await res.json()) as {
-        error?: { message?: string };
-        model?: string;
-        choices?: { message?: { content?: string } }[];
-      };
-      const text = json.choices?.[0]?.message?.content || json.error?.message || "";
-      const ok = res.ok && /OPENROUTER_OK/i.test(text);
+    await probe("gemini-brain", maskKey(geminiKey()), async () => {
+      const key = geminiKey();
+      if (!key) {
+        return {
+          id: "gemini-brain",
+          ok: false,
+          status: 0,
+          detail:
+            "missing GEMINI_API_KEY - the whole engine (chat, tools, vision, research, images, speech) runs on this one key",
+          masked: "not set",
+        };
+      }
+      // One real generateContent call through the shipped engine, chain and all.
+      const ping = await geminiPing();
       return {
-        id: "openrouter",
-        ok,
-        status: res.status,
-        detail: ok
-          ? `${json.model || models[0]} answered OPENROUTER_OK`
-          : (text || json.model || lastOpenRouterError() || "").slice(0, 220),
+        id: "gemini-brain",
+        ok: ping.ok,
+        status: ping.ok ? 200 : 0,
+        detail: ping.ok ? ping.detail : (ping.detail || lastGeminiError() || "").slice(0, 220),
         masked: maskKey(key),
       };
     }),
@@ -172,25 +149,32 @@ export async function GET() {
   );
 
   checks.push(
-    await probe("gemini", maskKey(geminiKey()), async () => {
+    await probe("gemini-vision", maskKey(geminiKey()), async () => {
       const key = geminiKey();
       if (!key) {
         return {
-          id: "gemini",
+          id: "gemini-vision",
           ok: false,
           status: 0,
-          detail: "missing GEMINI_API_KEY - the vision engine (all document/photo reads), deep research and image generation run ONLY on this key",
+          detail: "missing GEMINI_API_KEY - vision (all document/photo reads) and deep research run on this key",
           masked: "not set",
         };
       }
-      // One real generateContent call: proves the key is valid AND that a
-      // thinking model actually returns text with our generation config.
-      const ping = await geminiPing();
+      // A real multimodal read: a 1x1 PNG travels as inlineData, proving the
+      // vision path (not just text generation) works with this key.
+      const pixel =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      const r = await geminiVision({
+        prompt: "Reply with exactly VISION_OK.",
+        images: [pixel],
+        maxTokens: 2048,
+      });
+      const ok = /VISION_OK/i.test(r.text);
       return {
-        id: "gemini",
-        ok: ping.ok,
-        status: ping.ok ? 200 : 0,
-        detail: ping.detail,
+        id: "gemini-vision",
+        ok,
+        status: ok ? 200 : 0,
+        detail: ok ? `${r.model} read an inline image and answered VISION_OK` : r.text.slice(0, 160),
         masked: maskKey(key),
       };
     }),
@@ -225,40 +209,30 @@ export async function GET() {
   );
 
   checks.push(
-    await probe("whisper", maskKey(whisperKey()), async () => {
-      const key = whisperKey();
-      if (!key) {
-        return {
-          id: "whisper",
-          ok: Boolean(openRouterKey()),
-          status: 0,
-          detail: openRouterKey()
-            ? "no direct OpenAI key - transcription routes through OpenRouter"
-            : "no key - browser Web Speech API only",
-          masked: "not set",
-        };
-      }
-      const res = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` } });
+    await probe("transcription", maskKey(geminiKey()), async () => {
+      const key = geminiKey();
       return {
-        id: "whisper",
-        ok: res.ok,
-        status: res.status,
-        detail: res.ok ? "OpenAI key valid - Whisper available" : "OpenAI key rejected",
-        masked: maskKey(key),
+        id: "transcription",
+        ok: Boolean(key),
+        status: key ? 200 : 0,
+        detail: key
+          ? "speech-to-text runs on the Gemini key (audio inlineData → generateContent)"
+          : "no GEMINI_API_KEY - the browser Web Speech API is the only transcriber",
+        masked: key ? maskKey(key) : "not set",
       };
     }),
   );
 
   checks.push(
     await probe("model-chain", "-", async () => {
-      const chain = [...CHAT_MODELS, ...FREE_MODELS];
+      const chain = Array.from(new Set([...CHAT_MODELS, ...FREE_MODELS]));
       const status = await modelCatalogueStatus(chain);
       if (!status.reachable) {
         return {
           id: "model-chain",
           ok: false,
           status: "unreachable",
-          detail: `OpenRouter's public model catalogue could not be reached - the ${chain.length}-slug chain runs unfiltered (each group still recovers from retired slugs at request time).`,
+          detail: `Google's model catalogue could not be reached - the ${chain.length}-slug Gemini chain runs unfiltered (a retired slug is still skipped at request time).`,
           masked: "-",
         };
       }

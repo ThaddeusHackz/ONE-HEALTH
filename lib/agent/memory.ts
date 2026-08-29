@@ -1,4 +1,4 @@
-import { complete, openRouterConfigured, type ChatMessage } from "@/lib/openrouter";
+import { complete, geminiConfigured, type ChatMessage } from "@/lib/llm";
 import { getDB, saveDB, uid } from "@/lib/store";
 
 /**
@@ -271,10 +271,10 @@ function guessLanguage(name: string): string {
 /**
  * "Evolves the more with information": after a substantive turn the agent
  * distils durable facts out of the transcript and stores them. Runs on the
- * OpenRouter key with the cheapest chain; silently skips when unconfigured.
+ * Gemini key with the cheapest chain; silently skips when unconfigured.
  */
 export async function distillMemory(messages: AgentMessageRow[]): Promise<MemoryFact[]> {
-  if (!openRouterConfigured()) return [];
+  if (!geminiConfigured()) return [];
   const transcript = messages
     .slice(-12)
     .map((m) => `${m.role}: ${String(m.content).slice(0, 1200)}`)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/body";
 import { DHIMS2_TEMPLATE, parseDhims2 } from "@/lib/dhims2";
-import { openRouterReview } from "@/lib/or-review";
+import { aiReview } from "@/lib/ai-review";
 import { findOfficialSeries, getDB, recordAudit, saveDB, uid } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
     redactions: 0,
     detail: `${row.diseaseId}/${row.regionId} ${row.points.length} weeks completeness=${quality?.completeness ?? "n/a"}`,
   });
-  const review = await openRouterReview("dhims2", {
+  const review = await aiReview("dhims2", {
     quality,
     weeks: row.points.length,
     diseaseId: row.diseaseId,

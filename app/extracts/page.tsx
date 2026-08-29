@@ -98,7 +98,7 @@ export default function ExtractsPage() {
           ))}
           {review && (
             <div className="mt-4 rounded-2xl bg-green-soft p-4">
-              <div className="text-xs uppercase tracking-wider text-ghana-green">{reviewModel || "OpenRouter review"}</div>
+              <div className="text-xs uppercase tracking-wider text-ghana-green">{reviewModel || "Gemini review"}</div>
               <p className="mt-2 whitespace-pre-wrap">{review}</p>
             </div>
           )}

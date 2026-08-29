@@ -6,7 +6,7 @@ You will create **one Web Service**. There is no separate frontend and backend -
 
 ```bash
 git add -A
-git commit -m "ONE HEALTH GHANA - forecast desk, vision, OpenRouter"
+git commit -m "ONE HEALTH GHANA - forecast desk, vision, Gemini engine"
 git push origin arena/01a0189f-one-health
 ```
 
@@ -36,9 +36,10 @@ In the service → **Environment**:
 ```
 NODE_ENV=production
 NEXT_PUBLIC_SITE_URL=https://YOUR-SERVICE.onrender.com
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_HTTP_REFERER=https://YOUR-SERVICE.onrender.com
-OPENROUTER_APP_TITLE=ONE HEALTH GHANA
+GEMINI_API_KEY=            # the whole AI engine - https://aistudio.google.com/apikey
+GEMINI_MODELS=             # optional - override the model chain
+GEMINI_IMAGE_MODELS=       # optional - override the image model chain
+GEMINI_TTS_VOICE=          # optional - prebuilt voice name (default Kore)
 TAVILY_API_KEY=            # optional
 ELEVENLABS_API_KEY=        # optional
 ELEVENLABS_VOICE_ID=       # optional
@@ -58,15 +59,15 @@ CMS login is `/admin` (default local: `admin@ghs.gov.gh` / the password you set)
 
 - `/` loads the white Ghana desk.
 - `/forecast` draws an ensemble interval without any key.
-- `/api/health` shows `"openrouter": true` after the key is set.
+- `/api/health` shows `"gemini": true` and `"engine": "gemini"` after the key is set.
 - `/intelligence` answers with a model name from the fallback chain.
 - `/vision` reads a redacted scan.
-- Microphone works in Chrome (Web Speech). Whisper is a bonus if OpenRouter exposes it.
+- Microphone works in Chrome (Web Speech). Server-side transcription runs on the same Gemini key.
 
 ## 4. Free-tier notes
 
 - The first request after idle can take 30-60 seconds. That is Render spinning the box, not a model failure.
-- OpenRouter **402** means the credit balance is empty - no fallback will save you until you top up.
+- A Gemini **429** means the key is out of quota for that model. The chain rotates to the next model, then to the free-tier models; a fully exhausted key needs billing enabled in Google AI Studio.
 - Official DHIMS2 data is still your responsibility to load. The shipped series are epidemiologically shaped **demonstrations**.
 
 ## 5. Local preview of production
